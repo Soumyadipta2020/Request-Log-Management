@@ -116,7 +116,7 @@ app_ui = ui.page_fluid(
             ui.output_ui("cluster_banner"),
             ui.navset_hidden(
                 ui.nav_panel(
-                    "Visuals",
+                    "Summary",
                     ui.div(
                         ui.div(
                             section_header("Dashboard Filters", "Visuals and totals update together"),
@@ -144,13 +144,13 @@ app_ui = ui.page_fluid(
                         ui.output_ui("summary_metrics"),
                         ui.div(
                             ui.div(
-                                section_header("Monthly Requests", "Stacked by priority category"),
-                                output_widget("monthly_priority_chart"),
-                                class_="content-panel chart-wide",
-                            ),
-                            ui.div(
                                 section_header("Status Mix"),
                                 output_widget("status_chart"),
+                                class_="content-panel",
+                            ),
+                            ui.div(
+                                section_header("Platform Mix"),
+                                output_widget("platform_chart"),
                                 class_="content-panel",
                             ),
                             ui.div(
@@ -159,9 +159,9 @@ app_ui = ui.page_fluid(
                                 class_="content-panel",
                             ),
                             ui.div(
-                                section_header("Assigned Work"),
-                                output_widget("assignee_chart"),
-                                class_="content-panel",
+                                section_header("Monthly Requests", "Stacked by priority category"),
+                                output_widget("monthly_priority_chart"),
+                                class_="content-panel chart-full-width",
                             ),
                             class_="dashboard-grid",
                         ),
@@ -235,6 +235,7 @@ app_ui = ui.page_fluid(
                                     ui.input_select("manage_status", "Status", settings.request_statuses),
                                     ui.input_select("manage_priority", "Severity (Priority)", settings.priorities),
                                     ui.input_date("manage_expected_end_date", "Expected end date", value=date.today()),
+                                    ui.input_text("manage_log_date", "Log Date (YYYY-MM-DD HH:MM:SS)"),
                                     ui.div(
                                         ui.input_text_area(
                                             "manage_comment",
@@ -261,7 +262,7 @@ app_ui = ui.page_fluid(
                     ),
                 ),
                 id="main_tabs",
-                selected="Visuals",
+                selected="Summary",
             ),
             class_="main-workspace",
         ),
@@ -359,9 +360,9 @@ def server(input: Inputs, output: Outputs, session: Session):
 
     @render.ui
     def sidebar_nav():
-        active_tab = input.main_tabs() or "Visuals"
+        active_tab = input.main_tabs() or "Summary"
         return ui.div(
-            sidebar_link("nav_visuals", "Visuals", active_tab == "Visuals"),
+            sidebar_link("nav_visuals", "Summary", active_tab == "Summary"),
             sidebar_link("nav_log_request", "Log Request", active_tab == "Log Request"),
             sidebar_link("nav_manage", "Manage", active_tab == "Manage"),
             class_="side-nav",
@@ -370,7 +371,7 @@ def server(input: Inputs, output: Outputs, session: Session):
     @reactive.effect
     @reactive.event(input.nav_visuals)
     def show_visuals():
-        ui.update_navs("main_tabs", selected="Visuals")
+        ui.update_navs("main_tabs", selected="Summary")
 
     @reactive.effect
     @reactive.event(input.nav_log_request)
@@ -388,7 +389,7 @@ def server(input: Inputs, output: Outputs, session: Session):
         state = info.get("state", "LOCAL")
         message = info.get("message", "")
         if settings.storage_mode != "databricks":
-            return ui.div("Local CSV mode is active. Switch STORAGE_MODE to databricks for Unity Catalog Delta storage.", class_="health-banner ok")
+            return None
         banner_class = "ok" if info.get("can_read") == "true" else "warn"
         return ui.div(
             ui.tags.span(f"Cluster {state}", class_="health-state"),
@@ -458,8 +459,8 @@ def server(input: Inputs, output: Outputs, session: Session):
             color_discrete_map=STATUS_COLORS,
             color_discrete_sequence=BG_COLORS,
         )
-        fig.update_traces(textinfo="label+percent+value", hovertemplate="%{label}: %{value} requests<extra></extra>")
-        fig.update_layout(plot_template("Requests by status")["layout"], legend_orientation="h")
+        fig.update_traces(textinfo="label+value", textposition="outside", hovertemplate="%{label}: %{value} requests<extra></extra>")
+        fig.update_layout(plot_template("Requests by status")["layout"], showlegend=False)
         fig.update_layout(height=270)
         fig.add_annotation(text=f"{len(data)}<br>total", x=0.5, y=0.5, showarrow=False, font={"size": 18, "color": "#043b7a"})
         return fig
@@ -489,8 +490,8 @@ def server(input: Inputs, output: Outputs, session: Session):
             color_discrete_map=PRIORITY_COLORS,
             color_discrete_sequence=BG_COLORS,
         )
-        fig.update_traces(textinfo="label+percent+value", hovertemplate="%{label}: %{value} requests<extra></extra>")
-        fig.update_layout(plot_template("Priority mix")["layout"], legend_orientation="h")
+        fig.update_traces(textinfo="label+value", textposition="outside", hovertemplate="%{label}: %{value} requests<extra></extra>")
+        fig.update_layout(plot_template("Priority mix")["layout"], showlegend=False)
         fig.update_layout(height=270)
         fig.add_annotation(text=f"{len(data)}<br>total", x=0.5, y=0.5, showarrow=False, font={"size": 18, "color": "#043b7a"})
         return fig
@@ -523,17 +524,47 @@ def server(input: Inputs, output: Outputs, session: Session):
             color_discrete_map=PRIORITY_COLORS,
             color_discrete_sequence=BG_COLORS,
         )
-        fig.update_layout(plot_template("Monthly requests by priority")["layout"], barmode="stack", legend_orientation="h")
-        fig.update_layout(height=360)
+        fig.update_layout(plot_template("Monthly requests")["layout"], barmode="stack", showlegend=False)
+        fig.update_layout(height=270)
         fig.update_yaxes(dtick=1, rangemode="tozero")
         fig.update_traces(hovertemplate="%{x}<br>%{fullData.name}: %{y} requests<extra></extra>")
+        return fig
+
+    @render_widget
+    def platform_chart():
+        data = filtered_requests()
+        if data.empty:
+            fig = empty_chart("Platform mix")
+            fig.update_layout(height=270)
+            return fig
+
+        counts = data["platfor"].astype(str).value_counts()
+        chart_data = pd.DataFrame(
+            {
+                "Platform": settings.platforms,
+                "Requests": [int(counts.get(platform, 0)) for platform in settings.platforms],
+            }
+        )
+        chart_data = chart_data[chart_data["Requests"] > 0]
+        fig = px.pie(
+            chart_data,
+            names="Platform",
+            values="Requests",
+            hole=0.52,
+            color="Platform",
+            color_discrete_sequence=BG_COLORS,
+        )
+        fig.update_traces(textinfo="label+value", textposition="outside", hovertemplate="%{label}: %{value} requests<extra></extra>")
+        fig.update_layout(plot_template("Platform mix")["layout"], showlegend=False)
+        fig.update_layout(height=270)
+        fig.add_annotation(text=f"{len(data)}<br>total", x=0.5, y=0.5, showarrow=False, font={"size": 18, "color": "#043b7a"})
         return fig
 
     @render_widget
     def assignee_chart():
         data = filtered_requests()
         if data.empty:
-            fig = empty_chart("Work assigned")
+            fig = empty_chart("Assigned Work")
             fig.update_layout(height=270)
             return fig
 
@@ -546,23 +577,49 @@ def server(input: Inputs, output: Outputs, session: Session):
             orientation="h",
             color="Requests",
             color_continuous_scale=["#e6f7fb", "#00aeef", "#043b7a"],
+            text="Requests"
         )
-        fig.update_layout(plot_template("Work assigned")["layout"], showlegend=False, coloraxis_showscale=False)
+        fig.update_traces(textposition="outside")
+        fig.update_layout(plot_template("Assigned Work")["layout"], showlegend=False, coloraxis_showscale=False)
         fig.update_layout(height=270)
-        fig.update_xaxes(dtick=1, rangemode="tozero")
+        fig.update_xaxes(visible=False)
+        fig.update_yaxes(title="")
+        return fig
+
+    @render_widget
+    def business_unit_chart():
+        data = filtered_requests()
+        if data.empty:
+            fig = empty_chart("Business Unit Mix")
+            fig.update_layout(height=270)
+            return fig
+
+        chart_data = data["buisness_unit"].value_counts().head(8).reset_index()
+        chart_data.columns = ["Business Unit", "Requests"]
+        fig = px.bar(
+            chart_data,
+            x="Requests",
+            y="Business Unit",
+            orientation="h",
+            color="Business Unit",
+            color_discrete_sequence=BG_COLORS,
+            text="Requests"
+        )
+        fig.update_traces(textposition="outside")
+        fig.update_layout(plot_template("Business Unit Mix")["layout"], showlegend=False)
+        fig.update_layout(height=270)
+        fig.update_xaxes(visible=False)
+        fig.update_yaxes(title="")
         return fig
 
     @render.data_frame
     def recent_requests():
         data = filtered_requests()
         if data.empty:
-            visible = pd.DataFrame(columns=["Created", "BU", "Platform", "Priority", "Title", "Assignee", "Status"])
+            from request_log.storage import COLUMNS
+            visible = pd.DataFrame(columns=COLUMNS)
         else:
-            visible = data.sort_values("log_date", ascending=False).head(25).assign(
-                Created=lambda frame: frame["log_date"].dt.strftime("%Y-%m-%d %H:%M"),
-                BU=lambda frame: frame["buisness_unit"],
-            )[["Created", "BU", "platfor", "priority", "title", "developer_name", "status"]]
-            visible.columns = ["Created", "BU", "Platform", "Priority", "Title", "Assignee", "Status"]
+            visible = data.sort_values("log_date", ascending=False).head(25)
         return render.DataGrid(visible, height="260px", filters=True)
 
     @render.ui
@@ -652,6 +709,7 @@ def server(input: Inputs, output: Outputs, session: Session):
         ui.update_select("manage_status", selected=str(row["status"]))
         ui.update_select("manage_priority", selected=str(row["priority"]))
         ui.update_date("manage_expected_end_date", value=date_value(row["expected_end_date"]))
+        ui.update_text("manage_log_date", value=str(row["log_date"]))
 
     @reactive.effect
     @reactive.event(input.submit_request)
@@ -722,6 +780,7 @@ def server(input: Inputs, output: Outputs, session: Session):
             "status": input.manage_status(),
             "priority": input.manage_priority(),
             "expected_end_date": input.manage_expected_end_date().isoformat(),
+            "log_date": input.manage_log_date(),
             "buisness_unit": str(row["buisness_unit"]),
             "dev_type": str(row["dev_type"]),
             "platfor": str(row["platfor"]),

@@ -342,11 +342,11 @@ body {
 .dashboard-grid {
   display: grid;
   gap: 14px;
-  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr) minmax(280px, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.chart-wide {
-  grid-row: span 2;
+.chart-full-width {
+  grid-column: span 3;
 }
 
 .content-panel {

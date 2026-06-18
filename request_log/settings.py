@@ -58,7 +58,7 @@ def get_settings() -> Settings:
         databricks_host=os.getenv("DATABRICKS_HOST", "").strip(),
         databricks_cluster_id=os.getenv("DATABRICKS_CLUSTER_ID", "").strip(),
         databricks_token=os.getenv("DATABRICKS_TOKEN", "").strip(),
-        default_assignee=os.getenv("DEFAULT_ASSIGNEE", "Shared Delivery Queue").strip(),
+        default_assignee=os.getenv("DEFAULT_ASSIGNEE", "Amit Manga").strip(),
         business_units=_csv_env("BUSINESS_UNITS", "Gas,ES"),
         development_types=_csv_env("DEVELOPMENT_TYPES", "Fault,Dev"),
         platforms=_csv_env("PLATFORMS", "Capacity App,PowerBI"),
@@ -66,6 +66,6 @@ def get_settings() -> Settings:
         request_statuses=_csv_env("REQUEST_STATUSES", "Pending,In Progress,Hold,Completed,Cancelled"),
         assignment_rules=_json_env(
             "ASSIGNMENT_RULES",
-            '{"Gas|Capacity App":"Gas Capacity Team","Gas|PowerBI":"Gas BI Team","ES|Capacity App":"ES Capacity Team","ES|PowerBI":"ES BI Team"}',
+            '{"Gas|Capacity App":"Soumyadipta Das","ES|Capacity App":"Gourav Das"}',
         ),
     )
