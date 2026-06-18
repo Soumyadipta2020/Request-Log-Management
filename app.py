@@ -522,10 +522,10 @@ def server(input: Inputs, output: Outputs, session: Session):
         trend = (
             data.dropna(subset=["log_date"])
             .assign(
-                MonthStart=lambda frame: frame["log_date"].dt.to_period("M").dt.to_timestamp(),
-                Month=lambda frame: frame["log_date"].dt.to_period("M").dt.to_timestamp().dt.strftime("%b %Y"),
+                MonthStart=lambda frame: pd.to_datetime(frame["log_date"].dt.strftime("%Y-%m-01")),
+                Month=lambda frame: frame["log_date"].dt.strftime("%b %Y"),
             )
-            .groupby(["MonthStart", "Month", "priority"], as_index=False)
+            .groupby(["MonthStart", "Month", "priority"], as_index=False, observed=False)
             .size()
             .rename(columns={"priority": "Priority", "size": "Requests"})
             .sort_values("MonthStart")
