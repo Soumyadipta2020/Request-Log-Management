@@ -70,6 +70,6 @@ def get_settings() -> Settings:
         request_statuses=_csv_env("REQUEST_STATUSES", "Pending,In Progress,Hold,Completed,Cancelled"),
         assignment_rules=_json_env(
             "ASSIGNMENT_RULES",
-            '{"Gas|Capacity App":"Soumyadipta Das","ES|Capacity App":"Gourav Das"}',
+            '{"Gas|PowerBI":"shikhar.singh@gmail.com","Gas|Capacity App":"soumyadiptao40@gmail.com","ES|PowerBI":"harshit.kapoor@gmail.com","ES|Capacity App":"gourav.das@gmail.com"}',
         ),
     )

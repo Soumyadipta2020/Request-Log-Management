@@ -105,6 +105,8 @@ def create_server(settings, store):
                 "status": input.filter_status(),
                 "platfor": input.filter_platform(),
                 "dev_type": input.filter_development_type(),
+                "requester": input.filter_requester(),
+                "developer_email": input.filter_developer(),
             }
             for column, selected in filters.items():
                 if selected and selected != ALL_FILTER:
@@ -119,6 +121,20 @@ def create_server(settings, store):
                     filtered = filtered[filtered["log_date"].dt.date <= date_value(end)]
             return filtered
 
+        @reactive.effect
+        def update_dynamic_filters():
+            data = requests()
+            if not data.empty:
+                requesters = [ALL_FILTER] + sorted([str(x) for x in data["requester"].dropna().unique() if str(x).strip()])
+                developers = [ALL_FILTER] + sorted([str(x) for x in data["developer_email"].dropna().unique() if str(x).strip()])
+                
+                # We retain the currently selected value if it's still in the list, otherwise revert to ALL_FILTER
+                current_req = input.filter_requester()
+                current_dev = input.filter_developer()
+                
+                ui.update_select("filter_requester", choices=requesters, selected=current_req if current_req in requesters else ALL_FILTER)
+                ui.update_select("filter_developer", choices=developers, selected=current_dev if current_dev in developers else ALL_FILTER)
+
         @reactive.calc
         def request_choices() -> dict[str, str]:
             data = requests()
@@ -126,7 +142,7 @@ def create_server(settings, store):
                 return {"": "No requests loaded"}
             sorted_data = data.sort_values("log_date", ascending=False)
             return {
-                row.request_id: f"[{row.request_id}] {row.title[:70]} | {row.status} | {row.developer_name}"
+                row.request_id: f"[{row.request_id}] {row.title[:70]} | {row.status} | {row.developer_email}"
                 for row in sorted_data.itertuples(index=False)
             }
 
@@ -355,7 +371,7 @@ def create_server(settings, store):
                 fig.update_layout(height=270)
                 return fig
 
-            chart_data = data["developer_name"].value_counts().head(8).reset_index()
+            chart_data = data["developer_email"].value_counts().head(8).reset_index()
             chart_data.columns = ["Assignee", "Requests"]
             fig = px.bar(
                 chart_data,
@@ -461,8 +477,8 @@ def create_server(settings, store):
                         class_="detail-meta-item"
                     ),
                     ui.div(
-                        ui.div("Assigned Owner", class_="detail-meta-label"),
-                        ui.div(str(row["developer_name"]), class_="detail-meta-val"),
+                        ui.div("Developer Email", class_="detail-meta-label"),
+                        ui.div(str(row["developer_email"]), class_="detail-meta-val"),
                         class_="detail-meta-item"
                     ),
                     class_="detail-meta-grid"
@@ -532,7 +548,7 @@ def create_server(settings, store):
                 expected_end_date=input.expected_end_date(),
                 title=title,
                 description=description,
-                developer_name=selected_assignee(),
+                developer_email=selected_assignee(),
                 requester=email,
             )
             try:
@@ -546,7 +562,7 @@ def create_server(settings, store):
                     ui.p("Request successfully logged!", style="font-weight: bold; margin-bottom: 8px;"),
                     ui.p(f"Request ID: {request['request_id']}", style="margin-bottom: 4px; font-family: monospace; font-size: 0.85rem;"),
                     ui.p(f"Log Date: {request['log_date']}", style="margin-bottom: 4px;"),
-                    ui.p(f"Assigned to: {request['developer_name']}", style="margin-bottom: 0;"),
+                    ui.p(f"Assigned to: {request['developer_email']}", style="margin-bottom: 0;"),
                 ),
                 type="message",
                 duration=10,
@@ -571,13 +587,13 @@ def create_server(settings, store):
                 "buisness_unit": str(row["buisness_unit"]),
                 "dev_type": str(row["dev_type"]),
                 "platfor": str(row["platfor"]),
-                "developer_name": str(row["developer_name"]),
+                "developer_email": str(row["developer_email"]),
                 "title": str(row["title"]),
                 "description": str(row["description"]),
                 "requester": str(row.get("requester", "")),
             }
             try:
-                store.update_request(request_id, updates, input.manage_comment(), input.developer_name())
+                store.update_request(request_id, updates, input.manage_comment(), input.developer_email())
             except Exception as exc:
                 ui.notification_show(f"Update failed: {exc}", type="error", duration=7)
                 return
@@ -593,6 +609,8 @@ def create_server(settings, store):
             ui.update_select("filter_status", selected=ALL_FILTER)
             ui.update_select("filter_platform", selected=ALL_FILTER)
             ui.update_select("filter_development_type", selected=ALL_FILTER)
+            ui.update_select("filter_requester", selected=ALL_FILTER)
+            ui.update_select("filter_developer", selected=ALL_FILTER)
             ui.update_date_range("filter_created", start=DEFAULT_FILTER_START, end=DEFAULT_FILTER_END)
 
         @reactive.effect

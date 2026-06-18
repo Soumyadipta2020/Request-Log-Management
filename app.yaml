@@ -30,4 +30,4 @@ env:
   - name: 'REQUEST_STATUSES'
     value: 'Pending,In Progress,Hold,Completed,Cancelled'
   - name: 'ASSIGNMENT_RULES'
-    value: '{"Gas|Capacity App":"Gas Capacity Team","Gas|PowerBI":"Gas BI Team","ES|Capacity App":"ES Capacity Team","ES|PowerBI":"ES BI Team"}'
+    value: '{"Gas|PowerBI":"shikhar.singh@gmail.com","Gas|Capacity App":"soumyadiptao40@gmail.com","ES|PowerBI":"harshit.kapoor@gmail.com","ES|Capacity App":"gourav.das@gmail.com"}'

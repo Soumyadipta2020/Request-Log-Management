@@ -23,7 +23,7 @@ COLUMNS = [
     "expected_end_date",
     "title",
     "description",
-    "developer_name",
+    "developer_email",
     "status",
     "dev_comment",
 ]
@@ -57,7 +57,7 @@ def new_request(
     expected_end_date: date,
     title: str,
     description: str,
-    developer_name: str,
+    developer_email: str,
     requester: str,
 ) -> dict[str, str]:
     now = now_text()
@@ -72,7 +72,7 @@ def new_request(
         "expected_end_date": expected_end_date.isoformat(),
         "title": title.strip(),
         "description": description.strip(),
-        "developer_name": developer_name,
+        "developer_email": developer_email,
         "status": "Pending",
         "dev_comment": "",
     }
@@ -146,7 +146,7 @@ class CsvStore:
         if pd.isna(existing_comments):
             existing_comments = ""
         data.at[row_index, "dev_comment"] = append_comment(str(existing_comments), comment, author)
-        data.at[row_index, "developer_name"] = author.strip()
+        data.at[row_index, "developer_email"] = author.strip()
         data.to_csv(self.path, index=False)
 
 
@@ -187,7 +187,7 @@ class DatabricksSqlWarehouseStore:
 
             updates = {column: value for column, value in updates.items() if column in COLUMNS}
             updates["dev_comment"] = append_comment(str(existing.iloc[0]["dev_comment"] or ""), comment, author)
-            updates["developer_name"] = author.strip()
+            updates["developer_email"] = author.strip()
             set_clause = ", ".join(f"{column} = {self._sql_literal(value)}" for column, value in updates.items())
             cursor.execute(f"UPDATE {self._table_name()} SET {set_clause} WHERE request_id = {self._sql_literal(request_id)}")
 
@@ -329,7 +329,7 @@ class DatabricksSqlWarehouseStore:
                     expected_end_date DATE,
                     title STRING,
                     description STRING,
-                    developer_name STRING,
+                    developer_email STRING,
                     status STRING,
                     dev_comment STRING
                 )
@@ -344,7 +344,7 @@ class DatabricksSqlWarehouseStore:
         existing_columns = {str(row["col_name"]).lower() for _, row in rows.iterrows()}
         column_types = {
             "requester": "STRING",
-            "developer_name": "STRING",
+            "developer_email": "STRING",
             "dev_comment": "STRING",
         }
         for column, column_type in column_types.items():

@@ -38,11 +38,12 @@ def create_app_ui(settings):
                         "Summary",
                         ui.div(
                             ui.div(
-                                section_header("Dashboard Filters", "Visuals and totals update together"),
+                                section_header("Dashboard Filters"),
                                 ui.div(
                                     ui.input_select("filter_business_unit", "Business unit", [ALL_FILTER, *settings.business_units]),
                                     ui.input_select("filter_priority", "Priority", [ALL_FILTER, *settings.priorities]),
                                     ui.input_select("filter_status", "Status", [ALL_FILTER, *settings.request_statuses]),
+                                    ui.input_select("filter_requester", "Requester", choices=[ALL_FILTER], selectize=True),
                                     ui.input_select("filter_platform", "Platform", [ALL_FILTER, *settings.platforms]),
                                     ui.input_select("filter_development_type", "Development type", [ALL_FILTER, *settings.development_types]),
                                     ui.input_date_range(
@@ -51,6 +52,7 @@ def create_app_ui(settings):
                                         start=DEFAULT_FILTER_START,
                                         end=DEFAULT_FILTER_END,
                                     ),
+                                    ui.input_select("filter_developer", "Developer", choices=[ALL_FILTER], selectize=True),
                                     class_="filter-grid",
                                 ),
                                 ui.div(
@@ -140,17 +142,17 @@ def create_app_ui(settings):
                         ui.div(
                             ui.div(
                                 ui.div(
-                                    section_header("Select Request", "Pick an item to update or view all details"),
-                                    ui.input_select("manage_request_id", "Request", choices={"": "No requests loaded"}),
+                                    section_header("Select Request"),
+                                    ui.input_select("manage_request_id", "Request", choices={"": "No requests loaded"}, selectize=True),
                                     class_="content-panel",
                                     style="margin-bottom: 14px;",
                                 ),
                                 ui.div(
                                     ui.output_ui("manage_details_view"),
                                     ui.hr(style="margin: 24px 0; border-color: var(--line);"),
-                                    section_header("Developer Update", "Modify status, severity, end date, or add comments"),
+                                    section_header("Developer Update"),
                                     ui.div(
-                                        ui.input_text("developer_name", "Developer name", placeholder="Your name"),
+                                        ui.input_text("developer_email", "Developer email", placeholder="name@example.com"),
                                         ui.input_select("manage_status", "Status", settings.request_statuses),
                                         ui.input_select("manage_priority", "Severity (Priority)", settings.priorities),
                                         ui.input_date("manage_expected_end_date", "Expected end date", value=date.today()),

@@ -1,3 +1,2 @@
-request_id,requester,buisness_unit,platfor,dev_type,priority,log_date,expected_end_date,title,description,developer_name,status,dev_comment
-REQ000001,abc@gmail.com,Gas,Capacity App,Fault,High,2026-05-18 14:15:19,2026-07-02,ABC,ABC,Soumyadipta Das,In Progress,2026-06-18 14:28:56 - Soumyadipta Das: Working
-REQ000002,xyz@gmail.com,ES,PowerBI,Dev,Low,2026-06-18 14:29:38,2026-07-02,XYZ,xyz,Amit Manga,Hold,2026-06-18 14:30:18 - Amit Manga: No time
+request_id,requester,buisness_unit,platfor,dev_type,priority,log_date,expected_end_date,title,description,developer_email,status,dev_comment
+REQ000001,dasdip01234@gmail.com,Gas,Capacity App,Fault,High,2026-06-18 20:08:59,2026-07-02,XYZ,xyz,dasdip01234@gmail.com,Pending,2026-06-18 20:12:29 - dasdip01234@gmail.com: xyz
