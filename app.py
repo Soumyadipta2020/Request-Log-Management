@@ -305,8 +305,11 @@ def server(input: Inputs, output: Outputs, session: Session):
             cluster_info.set({"state": exc.state, "message": str(exc), "can_read": "false"})
             return empty_requests()
         except Exception as exc:
-            data_error.set(str(exc))
-            cluster_info.set({"state": "ERROR", "message": str(exc), "can_read": "false"})
+            import traceback
+            traceback.print_exc()
+            error_msg = f"{type(exc).__name__}: {str(exc)}"
+            data_error.set(error_msg)
+            cluster_info.set({"state": "ERROR", "message": error_msg, "can_read": "false"})
             return empty_requests()
 
     @reactive.calc

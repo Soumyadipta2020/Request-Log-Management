@@ -219,7 +219,9 @@ class DatabricksSqlWarehouseStore:
                 else:
                     new_status = {"state": state, "message": "Warehouse is starting. Data will load when it reaches RUNNING.", "can_read": "false"}
             except Exception as exc:
-                new_status = {"state": "ERROR", "message": str(exc), "can_read": "false"}
+                import traceback
+                traceback.print_exc()
+                new_status = {"state": "ERROR", "message": f"{type(exc).__name__}: {str(exc)}", "can_read": "false"}
 
             with self._status_lock:
                 self._cluster_status = new_status
@@ -240,11 +242,17 @@ class DatabricksSqlWarehouseStore:
         warehouse = workspace_client.warehouses.get(self.settings.databricks_warehouse_id)
         http_path = warehouse.odbc_params.path
 
-        connection = sql.connect(
-            server_hostname=workspace_client.config.host.replace("https://", ""),
-            http_path=http_path,
-            credentials_provider=lambda: workspace_client.config.authenticate()
-        )
+        connect_kwargs = {
+            "server_hostname": workspace_client.config.host.replace("https://", ""),
+            "http_path": http_path,
+        }
+        
+        if self.settings.databricks_token:
+            connect_kwargs["access_token"] = self.settings.databricks_token
+        else:
+            connect_kwargs["credentials_provider"] = workspace_client.config.credentials_provider
+
+        connection = sql.connect(**connect_kwargs)
         return connection.cursor()
 
     def _workspace_client(self):
