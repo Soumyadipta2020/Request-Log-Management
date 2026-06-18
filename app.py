@@ -839,3 +839,9 @@ def format_date(value) -> str:
 
 
 app = App(app_ui, server)
+
+if __name__ == "__main__":
+    import os
+    from shiny import run_app
+    port = int(os.environ.get("DATABRICKS_APP_PORT", 8000))
+    run_app(app, host="0.0.0.0", port=port)
