@@ -5,11 +5,10 @@ import plotly.graph_objects as go
 def plot_template(title: str):
     return {
         "layout": {
-            "title": {"text": title, "font": {"size": 15, "color": "#043b7a"}},
             "paper_bgcolor": "rgba(0,0,0,0)",
             "plot_bgcolor": "rgba(0,0,0,0)",
             "font": {"family": "Inter, Segoe UI, Arial", "color": "#172033", "size": 12},
-            "margin": {"l": 18, "r": 18, "t": 42, "b": 28},
+            "margin": {"l": 18, "r": 18, "t": 14, "b": 28},
         }
     }
 

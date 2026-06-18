@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pathlib
 from shiny import App
 
 from request_log.server import create_server
@@ -13,7 +14,7 @@ store = RequestStore(settings)
 
 app_ui = create_app_ui(settings)
 server = create_server(settings, store)
-app = App(app_ui, server)
+app = App(app_ui, server, static_assets=pathlib.Path(__file__).parent / "www")
 
 
 if __name__ == "__main__":

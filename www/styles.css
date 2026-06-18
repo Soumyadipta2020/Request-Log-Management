@@ -30,7 +30,7 @@ body {
 .app-shell {
   background: linear-gradient(135deg, #edf8fb, #f6fbfd 45%, #eef8ff);
   display: grid;
-  grid-template-columns: 232px minmax(0, 1fr);
+  grid-template-columns: 140px minmax(0, 1fr);
   min-height: 100vh;
 }
 

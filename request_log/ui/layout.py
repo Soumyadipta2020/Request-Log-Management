@@ -14,7 +14,7 @@ def create_app_ui(settings):
         ui.include_css("www/styles.css"),
         ui.div(
             ui.tags.aside(
-                ui.div("BRITISH GAS", class_="logo"),
+                ui.img(src="british_gas.png", style="max-width: 120px; height: auto; margin-bottom: 18px;"),
                 ui.div("REQUESTS", class_="side-heading"),
                 ui.output_ui("sidebar_nav"),
 
