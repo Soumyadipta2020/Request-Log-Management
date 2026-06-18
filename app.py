@@ -293,13 +293,19 @@ def server(input: Inputs, output: Outputs, session: Session):
     @reactive.calc
     def requests() -> pd.DataFrame:
         refresh_count()
+        if settings.storage_mode == "databricks":
+            reactive.invalidate_later(15, session=session)
         try:
+            print("[DEBUG] Calling store.cluster_health()...", flush=True)
             health = store.cluster_health()
+            print(f"[DEBUG] Health result: {health}", flush=True)
             cluster_info.set(health)
             if health.get("can_read") != "true":
                 data_error.set(health.get("message", "Databricks cluster is not ready."))
                 return empty_requests()
+            print("[DEBUG] Calling store.read_requests()...", flush=True)
             data = store.read_requests()
+            print(f"[DEBUG] read_requests returned {len(data)} rows.", flush=True)
             data_error.set("")
             return data
         except ClusterStartingError as exc:
@@ -513,12 +519,13 @@ def server(input: Inputs, output: Outputs, session: Session):
             fig.update_layout(height=360)
             return fig
 
-        trend_data = data.dropna(subset=["log_date"]).copy()
-        month_start = trend_data["log_date"].dt.tz_localize(None).dt.to_period("M").dt.to_timestamp()
-        trend_data = trend_data.assign(MonthStart=month_start, Month=month_start.dt.strftime("%b %Y"))
         trend = (
-            trend_data
-            .groupby(["MonthStart", "Month", "priority"], as_index=False, observed=False)
+            data.dropna(subset=["log_date"])
+            .assign(
+                MonthStart=lambda frame: frame["log_date"].dt.to_period("M").dt.to_timestamp(),
+                Month=lambda frame: frame["log_date"].dt.to_period("M").dt.to_timestamp().dt.strftime("%b %Y"),
+            )
+            .groupby(["MonthStart", "Month", "priority"], as_index=False)
             .size()
             .rename(columns={"priority": "Priority", "size": "Requests"})
             .sort_values("MonthStart")
@@ -854,3 +861,4 @@ if __name__ == "__main__":
     port_str = os.environ.get("DATABRICKS_APP_PORT", "8000")
     port = int(port_str) if port_str.strip() else 8000
     uvicorn.run("app:app", host="0.0.0.0", port=port)
+
