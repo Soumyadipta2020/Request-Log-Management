@@ -6,6 +6,8 @@ from pathlib import Path
 from uuid import uuid4
 
 import pandas as pd
+import threading
+import time
 
 from request_log.settings import Settings
 
@@ -155,6 +157,11 @@ class DatabricksSqlWarehouseStore:
         self._validate_identifier(settings.uc_schema)
         self._validate_identifier(settings.uc_table)
 
+        self._status_lock = threading.Lock()
+        self._cluster_status = {"state": "UNKNOWN", "message": "Checking cluster health...", "can_read": "false"}
+        self._bg_thread_started = False
+        self._bg_lock = threading.Lock()
+
     def read_requests(self) -> pd.DataFrame:
         self._ensure_table()
         with self._get_cursor() as cursor:
@@ -185,26 +192,46 @@ class DatabricksSqlWarehouseStore:
             cursor.execute(f"UPDATE {self._table_name()} SET {set_clause} WHERE request_id = {self._sql_literal(request_id)}")
 
     def cluster_health(self) -> dict[str, str]:
-        try:
-            state = self._warehouse_state()
-            if state == RUNNING_STATE:
-                return {"state": state, "message": "Databricks SQL Warehouse is running.", "can_read": "true"}
-            if state not in STARTING_STATES:
-                self._start_warehouse()
-                return {
-                    "state": state,
-                    "message": f"Warehouse was {state}. Startup has been triggered.",
-                    "can_read": "false",
-                }
-            return {"state": state, "message": "Warehouse is starting. Data will load when it reaches RUNNING.", "can_read": "false"}
-        except Exception as exc:
-            return {"state": "UNKNOWN", "message": str(exc), "can_read": "false"}
+        with self._bg_lock:
+            if not self._bg_thread_started:
+                self._bg_thread_started = True
+                threading.Thread(target=self._status_polling_loop, daemon=True).start()
+
+        with self._status_lock:
+            return dict(self._cluster_status)
+
+    def _status_polling_loop(self) -> None:
+        while True:
+            try:
+                state = self._warehouse_state()
+                if state == RUNNING_STATE:
+                    new_status = {"state": state, "message": "Databricks SQL Warehouse is running.", "can_read": "true"}
+                elif state not in STARTING_STATES:
+                    try:
+                        self._start_warehouse()
+                        new_status = {
+                            "state": state,
+                            "message": f"Warehouse was {state}. Startup has been triggered.",
+                            "can_read": "false",
+                        }
+                    except Exception as exc:
+                        new_status = {"state": state, "message": f"Warehouse is {state}. Failed to trigger startup: {exc}", "can_read": "false"}
+                else:
+                    new_status = {"state": state, "message": "Warehouse is starting. Data will load when it reaches RUNNING.", "can_read": "false"}
+            except Exception as exc:
+                new_status = {"state": "ERROR", "message": str(exc), "can_read": "false"}
+
+            with self._status_lock:
+                self._cluster_status = new_status
+                
+            time.sleep(15)
 
     def _get_cursor(self):
-        state = self._warehouse_state()
+        with self._status_lock:
+            cached_status = self._cluster_status
+        
+        state = cached_status.get("state", "UNKNOWN")
         if state != RUNNING_STATE:
-            if state not in STARTING_STATES:
-                self._start_warehouse()
             raise ClusterStartingError(state)
 
         from databricks import sql
