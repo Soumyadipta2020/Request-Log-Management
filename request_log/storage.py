@@ -250,10 +250,21 @@ class DatabricksSqlWarehouseStore:
         if self.settings.databricks_token:
             connect_kwargs["access_token"] = self.settings.databricks_token
         else:
-            connect_kwargs["credentials_provider"] = workspace_client.config.credentials_provider
+            connect_kwargs["credentials_provider"] = self._sql_credentials_provider(workspace_client.config)
 
         connection = sql.connect(**connect_kwargs)
         return connection.cursor()
+
+    @staticmethod
+    def _sql_credentials_provider(config):
+        credentials_provider = getattr(config, "credentials_provider", None)
+        if credentials_provider is not None:
+            return credentials_provider
+
+        authenticate = getattr(config, "authenticate", None)
+        if authenticate is None:
+            raise RuntimeError("Databricks SDK config does not expose a SQL credentials provider.")
+        return lambda: authenticate
 
     def _workspace_client(self):
         from databricks.sdk import WorkspaceClient
