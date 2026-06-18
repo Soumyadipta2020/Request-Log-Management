@@ -1,0 +1,40 @@
+command:
+  - shiny
+  - run
+  - --host
+  - 0.0.0.0
+  - --port
+  - "$DATABRICKS_APP_PORT"
+  - app.py
+env:
+  - name: STORAGE_MODE
+    value: databricks
+  - name: UC_CATALOG
+    value: main
+  - name: UC_SCHEMA
+    value: request_management
+  - name: UC_DATABASE
+    value: request_management
+  - name: UC_TABLE
+    value: request_logs
+  - name: DATABRICKS_HOST
+    value: https://<your-workspace-hostname>
+  - name: DATABRICKS_CLUSTER_ID
+    value: <your-cluster-id>
+  # Prefer replacing this with a Databricks Apps secret valueFrom reference.
+  - name: DATABRICKS_TOKEN
+    value: ""
+  - name: DEFAULT_ASSIGNEE
+    value: Shared Delivery Queue
+  - name: BUSINESS_UNITS
+    value: Gas,ES
+  - name: DEVELOPMENT_TYPES
+    value: Fault,Dev
+  - name: PLATFORMS
+    value: Capacity App,PowerBI
+  - name: PRIORITIES
+    value: High,Medium,Low
+  - name: REQUEST_STATUSES
+    value: Pending,In Progress,Hold,Completed,Cancelled
+  - name: ASSIGNMENT_RULES
+    value: '{"Gas|Capacity App":"Gas Capacity Team","Gas|PowerBI":"Gas BI Team","ES|Capacity App":"ES Capacity Team","ES|PowerBI":"ES BI Team"}'
