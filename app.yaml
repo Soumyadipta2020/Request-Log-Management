@@ -10,20 +10,13 @@ env:
   - name: STORAGE_MODE
     value: databricks
   - name: UC_CATALOG
-    value: main
+    value: project_data
   - name: UC_SCHEMA
-    value: request_management
-  - name: UC_DATABASE
-    value: request_management
+    value: request_log_management
   - name: UC_TABLE
     value: request_logs
-  - name: DATABRICKS_HOST
-    value: https://<your-workspace-hostname>
-  - name: DATABRICKS_CLUSTER_ID
-    value: <your-cluster-id>
-  # Prefer replacing this with a Databricks Apps secret valueFrom reference.
-  - name: DATABRICKS_TOKEN
-    value: ""
+  - name: DATABRICKS_WAREHOUSE_ID
+    value: 42862832386f7061
   - name: DEFAULT_ASSIGNEE
     value: Shared Delivery Queue
   - name: BUSINESS_UNITS

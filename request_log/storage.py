@@ -93,7 +93,7 @@ class RequestStore:
     def __init__(self, settings: Settings):
         self.settings = settings
         if settings.storage_mode == "databricks":
-            self.backend = DatabricksConnectStore(settings)
+            self.backend = DatabricksSqlWarehouseStore(settings)
         else:
             self.backend = CsvStore(settings.local_csv_path)
 
@@ -148,76 +148,77 @@ class CsvStore:
         data.to_csv(self.path, index=False)
 
 
-class DatabricksConnectStore:
+class DatabricksSqlWarehouseStore:
     def __init__(self, settings: Settings):
         self.settings = settings
-        self._spark = None
         self._validate_identifier(settings.uc_catalog)
         self._validate_identifier(settings.uc_schema)
         self._validate_identifier(settings.uc_table)
 
     def read_requests(self) -> pd.DataFrame:
-        spark = self._get_spark()
-        self._ensure_table(spark)
-        return spark.sql(f"SELECT * FROM {self._table_name()} ORDER BY created_at DESC").toPandas()
+        self._ensure_table()
+        with self._get_cursor() as cursor:
+            cursor.execute(f"SELECT * FROM {self._table_name()} ORDER BY log_date DESC")
+            return cursor.fetchall_arrow().to_pandas()
 
     def add_request(self, request: dict[str, str]) -> None:
-        spark = self._get_spark()
-        self._ensure_table(spark)
+        self._ensure_table()
         columns = ", ".join(COLUMNS)
         values = ", ".join(self._sql_literal(request[column]) for column in COLUMNS)
-        spark.sql(f"INSERT INTO {self._table_name()} ({columns}) VALUES ({values})")
+        with self._get_cursor() as cursor:
+            cursor.execute(f"INSERT INTO {self._table_name()} ({columns}) VALUES ({values})")
 
     def update_request(self, request_id: str, updates: dict[str, str], comment: str = "", author: str = "") -> None:
-        spark = self._get_spark()
-        self._ensure_table(spark)
-        existing = spark.sql(
-            f"SELECT dev_comment FROM {self._table_name()} WHERE request_id = {self._sql_literal(request_id)} LIMIT 1"
-        ).toPandas()
-        if existing.empty:
-            raise ValueError("Selected request could not be found.")
+        self._ensure_table()
+        with self._get_cursor() as cursor:
+            cursor.execute(
+                f"SELECT dev_comment FROM {self._table_name()} WHERE request_id = {self._sql_literal(request_id)} LIMIT 1"
+            )
+            existing = cursor.fetchall_arrow().to_pandas()
+            if existing.empty:
+                raise ValueError("Selected request could not be found.")
 
-        updates = {column: value for column, value in updates.items() if column in COLUMNS}
-        updates["dev_comment"] = append_comment(str(existing.iloc[0]["dev_comment"] or ""), comment, author)
-        updates["developer_name"] = author.strip()
-        set_clause = ", ".join(f"{column} = {self._sql_literal(value)}" for column, value in updates.items())
-        spark.sql(f"UPDATE {self._table_name()} SET {set_clause} WHERE request_id = {self._sql_literal(request_id)}")
+            updates = {column: value for column, value in updates.items() if column in COLUMNS}
+            updates["dev_comment"] = append_comment(str(existing.iloc[0]["dev_comment"] or ""), comment, author)
+            updates["developer_name"] = author.strip()
+            set_clause = ", ".join(f"{column} = {self._sql_literal(value)}" for column, value in updates.items())
+            cursor.execute(f"UPDATE {self._table_name()} SET {set_clause} WHERE request_id = {self._sql_literal(request_id)}")
 
     def cluster_health(self) -> dict[str, str]:
         try:
-            state = self._cluster_state()
+            state = self._warehouse_state()
             if state == RUNNING_STATE:
-                return {"state": state, "message": "Databricks cluster is running.", "can_read": "true"}
+                return {"state": state, "message": "Databricks SQL Warehouse is running.", "can_read": "true"}
             if state not in STARTING_STATES:
-                self._start_cluster()
+                self._start_warehouse()
                 return {
                     "state": state,
-                    "message": f"Cluster was {state}. Startup has been triggered.",
+                    "message": f"Warehouse was {state}. Startup has been triggered.",
                     "can_read": "false",
                 }
-            return {"state": state, "message": "Cluster is starting. Data will load when it reaches RUNNING.", "can_read": "false"}
+            return {"state": state, "message": "Warehouse is starting. Data will load when it reaches RUNNING.", "can_read": "false"}
         except Exception as exc:
             return {"state": "UNKNOWN", "message": str(exc), "can_read": "false"}
 
-    def _get_spark(self):
-        state = self._cluster_state()
+    def _get_cursor(self):
+        state = self._warehouse_state()
         if state != RUNNING_STATE:
             if state not in STARTING_STATES:
-                self._start_cluster()
+                self._start_warehouse()
             raise ClusterStartingError(state)
 
-        if self._spark is None:
-            from databricks.connect import DatabricksSession
-            from databricks.sdk.core import Config
+        from databricks import sql
 
-            config_args = {"cluster_id": self.settings.databricks_cluster_id}
-            if self.settings.databricks_host:
-                config_args["host"] = self.settings.databricks_host
-            if self.settings.databricks_token:
-                config_args["token"] = self.settings.databricks_token
-            config = Config(**config_args)
-            self._spark = DatabricksSession.builder.sdkConfig(config).getOrCreate()
-        return self._spark
+        workspace_client = self._workspace_client()
+        warehouse = workspace_client.warehouses.get(self.settings.databricks_warehouse_id)
+        http_path = warehouse.odbc_params.path
+
+        connection = sql.connect(
+            server_hostname=self.settings.databricks_host.replace("https://", ""),
+            http_path=http_path,
+            access_token=self.settings.databricks_token
+        )
+        return connection.cursor()
 
     def _workspace_client(self):
         from databricks.sdk import WorkspaceClient
@@ -229,41 +230,44 @@ class DatabricksConnectStore:
             kwargs["token"] = self.settings.databricks_token
         return WorkspaceClient(**kwargs)
 
-    def _cluster_state(self) -> str:
-        if not self.settings.databricks_cluster_id:
-            raise RuntimeError("DATABRICKS_CLUSTER_ID is required for Databricks Connect storage.")
-        cluster = self._workspace_client().clusters.get(self.settings.databricks_cluster_id)
-        return getattr(cluster.state, "value", str(cluster.state)).upper()
+    def _warehouse_state(self) -> str:
+        if not self.settings.databricks_warehouse_id:
+            raise RuntimeError("DATABRICKS_WAREHOUSE_ID is required for Databricks SQL storage.")
+        warehouse = self._workspace_client().warehouses.get(self.settings.databricks_warehouse_id)
+        return getattr(warehouse.state, "value", str(warehouse.state)).upper()
 
-    def _start_cluster(self) -> None:
-        self._workspace_client().clusters.start(self.settings.databricks_cluster_id)
+    def _start_warehouse(self) -> None:
+        self._workspace_client().warehouses.start(self.settings.databricks_warehouse_id)
 
-    def _ensure_table(self, spark) -> None:
-        spark.sql(f"CREATE SCHEMA IF NOT EXISTS {self._schema_name()}")
-        spark.sql(
-            f"""
-            CREATE TABLE IF NOT EXISTS {self._table_name()} (
-                request_id STRING,
-                requester STRING,
-                buisness_unit STRING,
-                platfor STRING,
-                dev_type STRING,
-                priority STRING,
-                log_date TIMESTAMP,
-                expected_end_date DATE,
-                title STRING,
-                description STRING,
-                developer_name STRING,
-                status STRING,
-                dev_comment STRING
+    def _ensure_table(self) -> None:
+        with self._get_cursor() as cursor:
+            cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {self._schema_name()}")
+            cursor.execute(
+                f"""
+                CREATE TABLE IF NOT EXISTS {self._table_name()} (
+                    request_id STRING,
+                    requester STRING,
+                    buisness_unit STRING,
+                    platfor STRING,
+                    dev_type STRING,
+                    priority STRING,
+                    log_date TIMESTAMP,
+                    expected_end_date DATE,
+                    title STRING,
+                    description STRING,
+                    developer_name STRING,
+                    status STRING,
+                    dev_comment STRING
+                )
+                USING DELTA
+                """
             )
-            USING DELTA
-            """
-        )
-        self._add_missing_columns(spark)
+            self._add_missing_columns(cursor)
 
-    def _add_missing_columns(self, spark) -> None:
-        existing_columns = {column.lower() for column in spark.table(self._table_name()).columns}
+    def _add_missing_columns(self, cursor) -> None:
+        cursor.execute(f"DESCRIBE {self._table_name()}")
+        rows = cursor.fetchall_arrow().to_pandas()
+        existing_columns = {str(row["col_name"]).lower() for _, row in rows.iterrows()}
         column_types = {
             "requester": "STRING",
             "developer_name": "STRING",
@@ -271,7 +275,7 @@ class DatabricksConnectStore:
         }
         for column, column_type in column_types.items():
             if column not in existing_columns:
-                spark.sql(f"ALTER TABLE {self._table_name()} ADD COLUMNS ({column} {column_type})")
+                cursor.execute(f"ALTER TABLE {self._table_name()} ADD COLUMNS ({column} {column_type})")
 
     def _schema_name(self) -> str:
         return f"`{self.settings.uc_catalog}`.`{self.settings.uc_schema}`"
