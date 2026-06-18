@@ -1,4 +1,4 @@
-command:[
+command: [
   "python",
   "app.py"
 ]
