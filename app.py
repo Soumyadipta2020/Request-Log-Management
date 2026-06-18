@@ -34,9 +34,17 @@ DEFAULT_FILTER_START = date(2020, 1, 1)
 DEFAULT_FILTER_END = date.today() + timedelta(days=730)
 
 
-def metric_card(label: str, value: str, note: str, tone: str = "blue") -> ui.Tag:
+SVG_TOTAL = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>'
+SVG_PENDING = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>'
+SVG_IN_PROGRESS = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>'
+SVG_HOLD = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>'
+SVG_COMPLETED = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>'
+SVG_CANCELLED = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>'
+
+
+def metric_card(label: str, value: str, note: str, icon_svg: str, tone: str = "blue") -> ui.Tag:
     return ui.div(
-        ui.div(ui.tags.span(class_=f"metric-icon {tone}"), ui.tags.span(label), class_="metric-label"),
+        ui.div(ui.tags.span(ui.HTML(icon_svg), class_=f"metric-icon {tone}"), ui.tags.span(label), class_="metric-label"),
         ui.div(value, class_="metric-value"),
         ui.div(note, class_="metric-note"),
         class_=f"metric-card {tone}",
@@ -285,19 +293,13 @@ def server(input: Inputs, output: Outputs, session: Session):
     @reactive.calc
     def requests() -> pd.DataFrame:
         refresh_count()
-        if settings.storage_mode == "databricks":
-            reactive.invalidate_later(15, session=session)
         try:
-            print("[DEBUG] Calling store.cluster_health()...", flush=True)
             health = store.cluster_health()
-            print(f"[DEBUG] Health result: {health}", flush=True)
             cluster_info.set(health)
             if health.get("can_read") != "true":
                 data_error.set(health.get("message", "Databricks cluster is not ready."))
                 return empty_requests()
-            print("[DEBUG] Calling store.read_requests()...", flush=True)
             data = store.read_requests()
-            print(f"[DEBUG] read_requests returned {len(data)} rows.", flush=True)
             data_error.set("")
             return data
         except ClusterStartingError as exc:
@@ -432,12 +434,12 @@ def server(input: Inputs, output: Outputs, session: Session):
         completed = int((status == "completed").sum()) if total else 0
         cancelled = int((status == "cancelled").sum()) if total else 0
         return ui.div(
-            metric_card("Total Requests", str(total), "All logged demand", "blue"),
-            metric_card("Pending", str(pending), "Awaiting action", "cyan"),
-            metric_card("In Progress", str(in_progress), "Being delivered", "navy"),
-            metric_card("Hold", str(hold), "Paused or blocked", "amber"),
-            metric_card("Completed", str(completed), "Closed successfully", "green"),
-            metric_card("Cancelled", str(cancelled), "Stopped requests", "red"),
+            metric_card("Total Requests", str(total), "All logged demand", SVG_TOTAL, "blue"),
+            metric_card("Pending", str(pending), "Awaiting action", SVG_PENDING, "cyan"),
+            metric_card("In Progress", str(in_progress), "Being delivered", SVG_IN_PROGRESS, "navy"),
+            metric_card("Hold", str(hold), "Paused or blocked", SVG_HOLD, "amber"),
+            metric_card("Completed", str(completed), "Closed successfully", SVG_COMPLETED, "green"),
+            metric_card("Cancelled", str(cancelled), "Stopped requests", SVG_CANCELLED, "red"),
             class_="metric-grid",
         )
 
@@ -511,13 +513,12 @@ def server(input: Inputs, output: Outputs, session: Session):
             fig.update_layout(height=360)
             return fig
 
+        trend_data = data.dropna(subset=["log_date"]).copy()
+        month_start = trend_data["log_date"].dt.tz_localize(None).dt.to_period("M").dt.to_timestamp()
+        trend_data = trend_data.assign(MonthStart=month_start, Month=month_start.dt.strftime("%b %Y"))
         trend = (
-            data.dropna(subset=["log_date"])
-            .assign(
-                MonthStart=lambda frame: frame["log_date"].dt.to_period("M").dt.to_timestamp(),
-                Month=lambda frame: frame["log_date"].dt.to_period("M").dt.to_timestamp().dt.strftime("%b %Y"),
-            )
-            .groupby(["MonthStart", "Month", "priority"], as_index=False)
+            trend_data
+            .groupby(["MonthStart", "Month", "priority"], as_index=False, observed=False)
             .size()
             .rename(columns={"priority": "Priority", "size": "Requests"})
             .sort_values("MonthStart")
@@ -853,4 +854,3 @@ if __name__ == "__main__":
     port_str = os.environ.get("DATABRICKS_APP_PORT", "8000")
     port = int(port_str) if port_str.strip() else 8000
     uvicorn.run("app:app", host="0.0.0.0", port=port)
-

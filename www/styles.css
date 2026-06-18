@@ -294,10 +294,22 @@ body {
   background: var(--bg-cyan-soft);
   border: 1px solid rgba(0, 174, 239, 0.45);
   border-radius: 6px;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex: 0 0 auto;
-  height: 22px;
-  width: 22px;
+  height: 24px;
+  width: 24px;
+}
+
+.metric-icon svg {
+  width: 14px;
+  height: 14px;
+  stroke: var(--bg-cyan);
+}
+
+.metric-icon.blue svg {
+  stroke: var(--bg-blue);
 }
 
 .metric-icon.navy {
@@ -305,9 +317,17 @@ body {
   border-color: rgba(4, 59, 122, 0.35);
 }
 
+.metric-icon.navy svg {
+  stroke: var(--bg-blue-deep);
+}
+
 .metric-icon.green {
   background: #edf8e9;
   border-color: rgba(122, 193, 67, 0.42);
+}
+
+.metric-icon.green svg {
+  stroke: var(--bg-green);
 }
 
 .metric-icon.amber {
@@ -315,9 +335,17 @@ body {
   border-color: rgba(243, 182, 31, 0.5);
 }
 
+.metric-icon.amber svg {
+  stroke: var(--bg-amber);
+}
+
 .metric-icon.red {
   background: #fff0f0;
   border-color: rgba(255, 138, 138, 0.6);
+}
+
+.metric-icon.red svg {
+  stroke: var(--bg-red);
 }
 
 .metric-value {
