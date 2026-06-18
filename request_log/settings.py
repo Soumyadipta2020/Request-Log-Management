@@ -34,6 +34,8 @@ class Settings:
     uc_table: str
     databricks_host: str
     databricks_warehouse_id: str
+    databricks_cluster_id: str
+    databricks_workspace_id: str
     databricks_token: str
     default_assignee: str
     business_units: list[str]
@@ -57,6 +59,8 @@ def get_settings() -> Settings:
         uc_table=os.getenv("UC_TABLE", "request_logs").strip(),
         databricks_host=os.getenv("DATABRICKS_HOST", "").strip(),
         databricks_warehouse_id=os.getenv("DATABRICKS_WAREHOUSE_ID", "").strip(),
+        databricks_cluster_id=os.getenv("DATABRICKS_CLUSTER_ID", "").strip(),
+        databricks_workspace_id=os.getenv("DATABRICKS_WORKSPACE_ID", "").strip(),
         databricks_token=os.getenv("DATABRICKS_TOKEN", "").strip(),
         default_assignee=os.getenv("DEFAULT_ASSIGNEE", "Amit Manga").strip(),
         business_units=_csv_env("BUSINESS_UNITS", "Gas,ES"),

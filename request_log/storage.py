@@ -208,16 +208,16 @@ class DatabricksSqlWarehouseStore:
                     new_status = {"state": state, "message": "Databricks SQL Warehouse is running.", "can_read": "true"}
                 elif state not in STARTING_STATES:
                     try:
-                        self._start_warehouse()
+                        self._start_compute()
                         new_status = {
                             "state": state,
-                            "message": f"Warehouse was {state}. Startup has been triggered.",
+                            "message": f"Compute was {state}. Startup has been triggered.",
                             "can_read": "false",
                         }
                     except Exception as exc:
-                        new_status = {"state": state, "message": f"Warehouse is {state}. Failed to trigger startup: {exc}", "can_read": "false"}
+                        new_status = {"state": state, "message": f"Compute is {state}. Failed to trigger startup: {exc}", "can_read": "false"}
                 else:
-                    new_status = {"state": state, "message": "Warehouse is starting. Data will load when it reaches RUNNING.", "can_read": "false"}
+                    new_status = {"state": state, "message": "Compute is starting. Data will load when it reaches RUNNING.", "can_read": "false"}
             except Exception as exc:
                 import traceback
                 traceback.print_exc()
@@ -239,8 +239,27 @@ class DatabricksSqlWarehouseStore:
         from databricks import sql
 
         workspace_client = self._workspace_client()
-        warehouse = workspace_client.warehouses.get(self.settings.databricks_warehouse_id)
-        http_path = warehouse.odbc_params.path
+
+        if self.settings.databricks_cluster_id:
+            # Use an All-Purpose Cluster
+            cluster_id = self.settings.databricks_cluster_id
+            workspace_id = self.settings.databricks_workspace_id
+            
+            if not workspace_id:
+                # Try to extract workspace_id from the databricks host URL
+                host = self.settings.databricks_host.replace("https://", "")
+                if host.startswith("adb-"):
+                    workspace_id = host.split("-")[1].split(".")[0]
+                elif host.startswith("dbc-"):
+                    workspace_id = host.split("-")[1].split(".")[0]
+                else:
+                    workspace_id = "0"
+                    
+            http_path = f"/sql/protocolv1/o/{workspace_id}/{cluster_id}"
+        else:
+            # Use a Databricks SQL Warehouse
+            warehouse = workspace_client.warehouses.get(self.settings.databricks_warehouse_id)
+            http_path = warehouse.odbc_params.path
 
         connect_kwargs = {
             "server_hostname": workspace_client.config.host.replace("https://", ""),
@@ -277,13 +296,22 @@ class DatabricksSqlWarehouseStore:
         return WorkspaceClient(**kwargs)
 
     def _warehouse_state(self) -> str:
+        client = self._workspace_client()
+        if self.settings.databricks_cluster_id:
+            cluster = client.clusters.get(self.settings.databricks_cluster_id)
+            return getattr(cluster.state, "value", str(cluster.state)).upper()
+            
         if not self.settings.databricks_warehouse_id:
-            raise RuntimeError("DATABRICKS_WAREHOUSE_ID is required for Databricks SQL storage.")
-        warehouse = self._workspace_client().warehouses.get(self.settings.databricks_warehouse_id)
+            raise RuntimeError("DATABRICKS_WAREHOUSE_ID or DATABRICKS_CLUSTER_ID is required for Databricks SQL storage.")
+        warehouse = client.warehouses.get(self.settings.databricks_warehouse_id)
         return getattr(warehouse.state, "value", str(warehouse.state)).upper()
 
-    def _start_warehouse(self) -> None:
-        self._workspace_client().warehouses.start(self.settings.databricks_warehouse_id)
+    def _start_compute(self) -> None:
+        client = self._workspace_client()
+        if self.settings.databricks_cluster_id:
+            client.clusters.start(self.settings.databricks_cluster_id)
+        else:
+            client.warehouses.start(self.settings.databricks_warehouse_id)
 
     def _ensure_table(self) -> None:
         with self._get_cursor() as cursor:
