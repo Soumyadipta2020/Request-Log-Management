@@ -423,6 +423,24 @@ def create_server(settings, store):
                 visible = pd.DataFrame(columns=COLUMNS)
             else:
                 visible = data.sort_values("log_date", ascending=False).head(25)
+            
+            column_mapping = {
+                "request_id": "Request ID",
+                "requester": "Requester",
+                "buisness_unit": "Business Unit",
+                "platfor": "Platform",
+                "dev_type": "Dev Type",
+                "priority": "Priority",
+                "log_date": "Log Date",
+                "expected_end_date": "Expected End Date",
+                "title": "Title",
+                "description": "Description",
+                "developer_email": "Developer Email",
+                "status": "Status",
+                "dev_comment": "Dev Comment",
+            }
+            visible = visible.rename(columns=column_mapping)
+            
             return render.DataGrid(visible, height="260px", filters=True)
 
         @render.ui
