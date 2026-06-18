@@ -28,7 +28,7 @@ COLUMNS = [
 
 DATE_COLUMNS = ["log_date", "expected_end_date"]
 DEFAULT_STATUSES = ["Pending", "In Progress", "Hold", "Completed", "Cancelled"]
-STARTING_STATES = {"PENDING", "RESTARTING", "RESIZING"}
+STARTING_STATES = {"PENDING", "RESTARTING", "RESIZING", "STARTING"}
 RUNNING_STATE = "RUNNING"
 
 
@@ -214,9 +214,9 @@ class DatabricksSqlWarehouseStore:
         http_path = warehouse.odbc_params.path
 
         connection = sql.connect(
-            server_hostname=self.settings.databricks_host.replace("https://", ""),
+            server_hostname=workspace_client.config.host.replace("https://", ""),
             http_path=http_path,
-            access_token=self.settings.databricks_token
+            credentials_provider=lambda: workspace_client.config.authenticate()
         )
         return connection.cursor()
 

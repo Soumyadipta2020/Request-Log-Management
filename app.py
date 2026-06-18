@@ -288,12 +288,16 @@ def server(input: Inputs, output: Outputs, session: Session):
         if settings.storage_mode == "databricks":
             reactive.invalidate_later(15, session=session)
         try:
+            print("[DEBUG] Calling store.cluster_health()...", flush=True)
             health = store.cluster_health()
+            print(f"[DEBUG] Health result: {health}", flush=True)
             cluster_info.set(health)
             if health.get("can_read") != "true":
                 data_error.set(health.get("message", "Databricks cluster is not ready."))
                 return empty_requests()
+            print("[DEBUG] Calling store.read_requests()...", flush=True)
             data = store.read_requests()
+            print(f"[DEBUG] read_requests returned {len(data)} rows.", flush=True)
             data_error.set("")
             return data
         except ClusterStartingError as exc:
