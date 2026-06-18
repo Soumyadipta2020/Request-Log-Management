@@ -3,27 +3,27 @@ command:[
   "app.py"
 ]
 env:
-  - name: STORAGE_MODE
-    value: databricks
-  - name: UC_CATALOG
-    value: project_data
-  - name: UC_SCHEMA
-    value: request_log_management
-  - name: UC_TABLE
-    value: request_logs
-  - name: DATABRICKS_WAREHOUSE_ID
-    value: 42862832386f7061
-  - name: DEFAULT_ASSIGNEE
-    value: Shared Delivery Queue
-  - name: BUSINESS_UNITS
-    value: Gas,ES
-  - name: DEVELOPMENT_TYPES
-    value: Fault,Dev
-  - name: PLATFORMS
-    value: Capacity App,PowerBI
-  - name: PRIORITIES
-    value: High,Medium,Low
-  - name: REQUEST_STATUSES
-    value: Pending,In Progress,Hold,Completed,Cancelled
-  - name: ASSIGNMENT_RULES
+  - name: 'STORAGE_MODE'
+    value: 'databricks'
+  - name: 'UC_CATALOG'
+    value: 'project_data'
+  - name: 'UC_SCHEMA'
+    value: 'request_log_management'
+  - name: 'UC_TABLE'
+    value: 'request_logs'
+  - name: 'DATABRICKS_WAREHOUSE_ID'
+    value: '42862832386f7061'
+  - name: 'DEFAULT_ASSIGNEE'
+    value: 'Shared Delivery Queue'
+  - name: 'BUSINESS_UNITS'
+    value: 'Gas,ES'
+  - name: 'DEVELOPMENT_TYPES'
+    value: 'Fault,Dev'
+  - name: 'PLATFORMS'
+    value: 'Capacity App,PowerBI'
+  - name: 'PRIORITIES'
+    value: 'High,Medium,Low'
+  - name: 'REQUEST_STATUSES'
+    value: 'Pending,In Progress,Hold,Completed,Cancelled'
+  - name: 'ASSIGNMENT_RULES'
     value: '{"Gas|Capacity App":"Gas Capacity Team","Gas|PowerBI":"Gas BI Team","ES|Capacity App":"ES Capacity Team","ES|PowerBI":"ES BI Team"}'
