@@ -282,6 +282,8 @@ app_ui = ui.page_fluid(
 
 def server(input: Inputs, output: Outputs, session: Session):
     refresh_count = reactive.value(0)
+    request_data = reactive.value(empty_requests())
+    data_loaded = reactive.value(False)
     data_error = reactive.value("")
     cluster_info = reactive.value(store.cluster_health())
 
@@ -290,35 +292,57 @@ def server(input: Inputs, output: Outputs, session: Session):
     def refresh_data():
         refresh_count.set(refresh_count() + 1)
 
-    @reactive.calc
-    def requests() -> pd.DataFrame:
-        refresh_count()
+    @reactive.effect
+    def poll_cluster_health():
         if settings.storage_mode == "databricks":
             reactive.invalidate_later(15, session=session)
+        else:
+            return
+
         try:
             print("[DEBUG] Calling store.cluster_health()...", flush=True)
             health = store.cluster_health()
             print(f"[DEBUG] Health result: {health}", flush=True)
             cluster_info.set(health)
+            if health.get("can_read") == "true":
+                with reactive.isolate():
+                    has_loaded_data = data_loaded()
+                if not has_loaded_data:
+                    refresh_count.set(refresh_count() + 1)
+        except Exception as exc:
+            import traceback
+            traceback.print_exc()
+            error_msg = f"{type(exc).__name__}: {str(exc)}"
+            cluster_info.set({"state": "ERROR", "message": error_msg, "can_read": "false"})
+
+    @reactive.effect
+    def load_requests():
+        refresh_count()
+        try:
+            health = store.cluster_health()
+            cluster_info.set(health)
             if health.get("can_read") != "true":
                 data_error.set(health.get("message", "Databricks cluster is not ready."))
-                return empty_requests()
+                return
             print("[DEBUG] Calling store.read_requests()...", flush=True)
             data = store.read_requests()
             print(f"[DEBUG] read_requests returned {len(data)} rows.", flush=True)
+            request_data.set(data)
+            data_loaded.set(True)
             data_error.set("")
-            return data
         except ClusterStartingError as exc:
             data_error.set(str(exc))
             cluster_info.set({"state": exc.state, "message": str(exc), "can_read": "false"})
-            return empty_requests()
         except Exception as exc:
             import traceback
             traceback.print_exc()
             error_msg = f"{type(exc).__name__}: {str(exc)}"
             data_error.set(error_msg)
             cluster_info.set({"state": "ERROR", "message": error_msg, "can_read": "false"})
-            return empty_requests()
+
+    @reactive.calc
+    def requests() -> pd.DataFrame:
+        return request_data()
 
     @reactive.calc
     def filtered_requests() -> pd.DataFrame:
