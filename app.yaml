@@ -1,11 +1,7 @@
-command:
-  - shiny
-  - run
-  - --host
-  - 0.0.0.0
-  - --port
-  - "$DATABRICKS_APP_PORT"
-  - app.py
+command:[
+  "python",
+  "app.py"
+]
 env:
   - name: STORAGE_MODE
     value: databricks
