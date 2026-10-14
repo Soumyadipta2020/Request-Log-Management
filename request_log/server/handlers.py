@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import pandas as pd
 import plotly.express as px
@@ -242,7 +242,7 @@ def create_server(settings, store):
             data = filtered_requests()
             if data.empty:
                 fig = empty_chart("Requests by status")
-                fig.update_layout(height=270)
+                fig.update_layout(height=220)
                 return fig
 
             counts = data["status"].astype(str).value_counts()
@@ -257,15 +257,15 @@ def create_server(settings, store):
                 chart_data,
                 names="Status",
                 values="Requests",
-                hole=0.52,
+                hole=0.55,
                 color="Status",
                 color_discrete_map=STATUS_COLORS,
                 color_discrete_sequence=BG_COLORS,
             )
             fig.update_traces(textinfo="label+value", textposition="outside", hovertemplate="%{label}: %{value} requests<extra></extra>")
             fig.update_layout(plot_template("Requests by status")["layout"], showlegend=False)
-            fig.update_layout(height=270)
-            fig.add_annotation(text=f"{len(data)}<br>total", x=0.5, y=0.5, showarrow=False, font={"size": 18, "color": "#043b7a"})
+            fig.update_layout(height=220, margin=dict(l=10, r=10, t=10, b=12))
+            fig.add_annotation(text=f"{len(data)}<br>total", x=0.5, y=0.5, showarrow=False, font={"size": 14, "color": "#043b7a"})
             return fig
 
         @render_widget
@@ -273,7 +273,7 @@ def create_server(settings, store):
             data = filtered_requests()
             if data.empty:
                 fig = empty_chart("Priority mix")
-                fig.update_layout(height=270)
+                fig.update_layout(height=220)
                 return fig
 
             counts = data["priority"].astype(str).value_counts()
@@ -288,15 +288,15 @@ def create_server(settings, store):
                 chart_data,
                 names="Priority",
                 values="Requests",
-                hole=0.52,
+                hole=0.55,
                 color="Priority",
                 color_discrete_map=PRIORITY_COLORS,
                 color_discrete_sequence=BG_COLORS,
             )
             fig.update_traces(textinfo="label+value", textposition="outside", hovertemplate="%{label}: %{value} requests<extra></extra>")
             fig.update_layout(plot_template("Priority mix")["layout"], showlegend=False)
-            fig.update_layout(height=270)
-            fig.add_annotation(text=f"{len(data)}<br>total", x=0.5, y=0.5, showarrow=False, font={"size": 18, "color": "#043b7a"})
+            fig.update_layout(height=220, margin=dict(l=10, r=10, t=10, b=12))
+            fig.add_annotation(text=f"{len(data)}<br>total", x=0.5, y=0.5, showarrow=False, font={"size": 14, "color": "#043b7a"})
             return fig
 
         @render_widget
@@ -304,7 +304,7 @@ def create_server(settings, store):
             data = filtered_requests()
             if data.empty or data["log_date"].dropna().empty:
                 fig = empty_chart("Monthly requests by priority")
-                fig.update_layout(height=360)
+                fig.update_layout(height=220)
                 return fig
 
             trend = (
@@ -328,7 +328,7 @@ def create_server(settings, store):
                 color_discrete_sequence=BG_COLORS,
             )
             fig.update_layout(plot_template("Monthly requests")["layout"], barmode="stack", showlegend=False)
-            fig.update_layout(height=270)
+            fig.update_layout(height=220, margin=dict(l=28, r=16, t=10, b=30))
             fig.update_yaxes(dtick=1, rangemode="tozero")
             fig.update_traces(hovertemplate="%{x}<br>%{fullData.name}: %{y} requests<extra></extra>")
             return fig
@@ -338,7 +338,7 @@ def create_server(settings, store):
             data = filtered_requests()
             if data.empty:
                 fig = empty_chart("Platform mix")
-                fig.update_layout(height=270)
+                fig.update_layout(height=220)
                 return fig
 
             counts = data["platfor"].astype(str).value_counts()
@@ -353,14 +353,14 @@ def create_server(settings, store):
                 chart_data,
                 names="Platform",
                 values="Requests",
-                hole=0.52,
+                hole=0.55,
                 color="Platform",
                 color_discrete_sequence=BG_COLORS,
             )
             fig.update_traces(textinfo="label+value", textposition="outside", hovertemplate="%{label}: %{value} requests<extra></extra>")
             fig.update_layout(plot_template("Platform mix")["layout"], showlegend=False)
-            fig.update_layout(height=270)
-            fig.add_annotation(text=f"{len(data)}<br>total", x=0.5, y=0.5, showarrow=False, font={"size": 18, "color": "#043b7a"})
+            fig.update_layout(height=220, margin=dict(l=10, r=10, t=10, b=12))
+            fig.add_annotation(text=f"{len(data)}<br>total", x=0.5, y=0.5, showarrow=False, font={"size": 14, "color": "#043b7a"})
             return fig
 
         @render_widget
@@ -415,6 +415,8 @@ def create_server(settings, store):
             fig.update_yaxes(title="")
             return fig
 
+        current_modal_req_id = reactive.value("")
+
         @render.data_frame
         def recent_requests():
             data = filtered_requests()
@@ -422,8 +424,53 @@ def create_server(settings, store):
                 from request_log.storage import COLUMNS
                 visible = pd.DataFrame(columns=COLUMNS)
             else:
-                visible = data.sort_values("log_date", ascending=False).head(25)
+                visible = data.sort_values("log_date", ascending=False).head(25).copy()
             
+            def make_show_btn(req_id: str, field: str, label: str = "View", empty: bool = False):
+                empty_cls = " empty" if empty else ""
+                title_desc = f"Click to view {field}" if not empty else f"No {field} yet (click to view details)"
+                return ui.HTML(
+                    f'<button type="button" class="table-show-btn{empty_cls}" '
+                    f'title="{title_desc}" '
+                    f'onclick="Shiny.setInputValue(\'show_request_details_id\', \'{req_id}:{field}\', {{priority: \'event\'}}); event.stopPropagation();">'
+                    f'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 4px;">'
+                    f'<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>'
+                    f'<circle cx="12" cy="12" r="3"></circle>'
+                    f'</svg>'
+                    f'<span>{label}</span>'
+                    f'</button>'
+                )
+
+            if not visible.empty:
+                def format_table_date(val) -> str:
+                    if pd.isna(val) or not str(val).strip() or str(val).strip() in ("None", "nan", "NaT"):
+                        return ""
+                    try:
+                        parsed = pd.to_datetime(val, errors="coerce")
+                        if pd.notna(parsed):
+                            return parsed.strftime("%Y-%m-%d")
+                        return str(val).split(" ")[0].split("T")[0]
+                    except Exception:
+                        return str(val).split(" ")[0].split("T")[0]
+
+                if "log_date" in visible.columns:
+                    visible["log_date"] = visible["log_date"].apply(format_table_date)
+                if "expected_end_date" in visible.columns:
+                    visible["expected_end_date"] = visible["expected_end_date"].apply(format_table_date)
+                
+                desc_col = []
+                comment_col = []
+                for row in visible.itertuples():
+                    rid = str(row.request_id)
+                    desc_col.append(make_show_btn(rid, "description", "View"))
+                    
+                    raw_comment = getattr(row, "dev_comment", "")
+                    has_comment = bool(raw_comment and str(raw_comment).strip() and str(raw_comment).strip() not in ("None", "nan"))
+                    comment_col.append(make_show_btn(rid, "comment", "View" if has_comment else "None", empty=not has_comment))
+                
+                visible["description"] = desc_col
+                visible["dev_comment"] = comment_col
+
             column_mapping = {
                 "request_id": "Request ID",
                 "requester": "Requester",
@@ -440,8 +487,241 @@ def create_server(settings, store):
                 "dev_comment": "Dev Comment",
             }
             visible = visible.rename(columns=column_mapping)
+
+            # Conditional formatting: whole rows styled by status
+            status_row_styles = {
+                "pending": {
+                    "style": {"background-color": "rgba(0, 174, 239, 0.09)"},
+                    "class": "row-status-pending",
+                },
+                "in progress": {
+                    "style": {"background-color": "rgba(4, 59, 122, 0.08)"},
+                    "class": "row-status-in-progress",
+                },
+                "hold": {
+                    "style": {"background-color": "rgba(243, 182, 31, 0.12)"},
+                    "class": "row-status-hold",
+                },
+                "completed": {
+                    "style": {"background-color": "rgba(122, 193, 67, 0.12)"},
+                    "class": "row-status-completed",
+                },
+                "cancelled": {
+                    "style": {"background-color": "rgba(255, 138, 138, 0.13)"},
+                    "class": "row-status-cancelled",
+                },
+            }
+
+            table_styles = []
+            if not visible.empty and "Status" in visible.columns:
+                status_rows: dict[str, list[int]] = {}
+                for idx, val in enumerate(visible["Status"]):
+                    k = str(val).lower().strip()
+                    if k in status_row_styles:
+                        status_rows.setdefault(k, []).append(idx)
+
+                for k, r_indices in status_rows.items():
+                    table_styles.append({
+                        "rows": r_indices,
+                        "style": status_row_styles[k]["style"],
+                        "class": status_row_styles[k]["class"],
+                    })
             
-            return render.DataGrid(visible, height="260px", filters=True)
+            return render.DataGrid(visible, height="480px", filters=True, styles=table_styles)
+
+        @render.download_button(
+            filename=lambda: f"requests_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+        )
+        def download_table():
+            data = filtered_requests()
+            if data.empty:
+                from request_log.storage import COLUMNS
+                export_df = pd.DataFrame(columns=COLUMNS)
+            else:
+                export_df = data.sort_values("log_date", ascending=False).copy()
+
+            def format_csv_date(val) -> str:
+                if pd.isna(val) or not str(val).strip() or str(val).strip() in ("None", "nan", "NaT"):
+                    return ""
+                try:
+                    parsed = pd.to_datetime(val, errors="coerce")
+                    if pd.notna(parsed):
+                        return parsed.strftime("%Y-%m-%d")
+                    return str(val).split(" ")[0].split("T")[0]
+                except Exception:
+                    return str(val).split(" ")[0].split("T")[0]
+
+            if not export_df.empty:
+                if "log_date" in export_df.columns:
+                    export_df["log_date"] = export_df["log_date"].apply(format_csv_date)
+                if "expected_end_date" in export_df.columns:
+                    export_df["expected_end_date"] = export_df["expected_end_date"].apply(format_csv_date)
+
+            column_mapping = {
+                "request_id": "Request ID",
+                "requester": "Requester",
+                "buisness_unit": "Business Unit",
+                "platfor": "Platform",
+                "dev_type": "Dev Type",
+                "priority": "Priority",
+                "log_date": "Log Date",
+                "expected_end_date": "Expected End Date",
+                "title": "Title",
+                "description": "Description",
+                "developer_email": "Developer Email",
+                "status": "Status",
+                "dev_comment": "Dev Comment",
+            }
+            export_df = export_df.rename(columns=column_mapping)
+            cols_order = [c for c in column_mapping.values() if c in export_df.columns]
+            export_df = export_df[cols_order]
+
+            yield export_df.to_csv(index=False)
+
+        @reactive.effect
+        @reactive.event(input.show_request_details_id)
+        def show_request_modal():
+            raw_val = input.show_request_details_id()
+            if not raw_val:
+                return
+            parts = str(raw_val).split(":", 1)
+            req_id = parts[0]
+            field = parts[1] if len(parts) > 1 else "details"
+            current_modal_req_id.set(req_id)
+
+            data = requests()
+            if data.empty:
+                return
+            matching = data[data["request_id"] == req_id]
+            if matching.empty:
+                return
+            row = matching.iloc[0]
+
+            log_date_str = ""
+            if "log_date" in row and not pd.isna(row["log_date"]):
+                log_date_str = pd.to_datetime(row["log_date"]).strftime("%Y-%m-%d %H:%M")
+
+            end_date_str = ""
+            if "expected_end_date" in row and not pd.isna(row["expected_end_date"]):
+                try:
+                    end_date_str = pd.to_datetime(row["expected_end_date"]).strftime("%Y-%m-%d")
+                except Exception:
+                    end_date_str = str(row["expected_end_date"])
+
+            prio = str(row.get("priority", "N/A"))
+            status = str(row.get("status", "N/A"))
+            title_text = str(row.get("title", ""))
+            desc_text = str(row.get("description", ""))
+            dev_comment_raw = str(row.get("dev_comment", "") or "").strip()
+
+            comment_nodes = []
+            if dev_comment_raw and dev_comment_raw not in ("None", "nan"):
+                entries = [entry.strip() for entry in dev_comment_raw.split("\n") if entry.strip()]
+                for entry in reversed(entries):
+                    comment_nodes.append(ui.div(entry, class_="comment-entry", style="margin-bottom: 8px;"))
+            else:
+                comment_nodes.append(ui.div("No developer comments recorded yet.", class_="empty-state", style="margin-bottom: 8px;"))
+
+            desc_style = "max-height: 180px; overflow-y: auto;"
+            if field == "description":
+                desc_style += " border-color: var(--bg-cyan); box-shadow: 0 0 0 2px rgba(0, 174, 239, 0.25);"
+
+            comment_style = "max-height: 180px; overflow-y: auto; padding: 4px;"
+            if field == "comment":
+                comment_style += " border: 1px solid var(--bg-cyan); border-radius: 6px; box-shadow: 0 0 0 2px rgba(0, 174, 239, 0.25);"
+
+            m = ui.modal(
+                ui.div(
+                    ui.div(
+                        ui.div(f"ID: {row['request_id']}", class_="detail-id"),
+                        ui.div(
+                            ui.span(prio, class_=f"badge prio-{prio.lower()}"),
+                            ui.span(status, class_=f"badge status-{status.replace(' ', '-').lower()}"),
+                            class_="detail-badges",
+                        ),
+                        class_="detail-header",
+                    ),
+                    ui.h3(title_text, class_="detail-title", style="margin: 12px 0 16px;"),
+                    ui.div(
+                        ui.div(
+                            ui.div("Log Date", class_="detail-meta-label"),
+                            ui.div(log_date_str, class_="detail-meta-val"),
+                            class_="detail-meta-item",
+                        ),
+                        ui.div(
+                            ui.div("Expected End Date", class_="detail-meta-label"),
+                            ui.div(end_date_str, class_="detail-meta-val"),
+                            class_="detail-meta-item",
+                        ),
+                        ui.div(
+                            ui.div("Requester", class_="detail-meta-label"),
+                            ui.div(str(row.get("requester", "N/A")), class_="detail-meta-val"),
+                            class_="detail-meta-item",
+                        ),
+                        ui.div(
+                            ui.div("Developer Email", class_="detail-meta-label"),
+                            ui.div(str(row.get("developer_email", "N/A")), class_="detail-meta-val"),
+                            class_="detail-meta-item",
+                        ),
+                        ui.div(
+                            ui.div("Business Unit", class_="detail-meta-label"),
+                            ui.div(str(row.get("buisness_unit", "N/A")), class_="detail-meta-val"),
+                            class_="detail-meta-item",
+                        ),
+                        ui.div(
+                            ui.div("Platform", class_="detail-meta-label"),
+                            ui.div(str(row.get("platfor", "N/A")), class_="detail-meta-val"),
+                            class_="detail-meta-item",
+                        ),
+                        ui.div(
+                            ui.div("Development Type", class_="detail-meta-label"),
+                            ui.div(str(row.get("dev_type", "N/A")), class_="detail-meta-val"),
+                            class_="detail-meta-item",
+                        ),
+                        class_="detail-meta-grid",
+                    ),
+                    ui.div(
+                        ui.div("DESCRIPTION", class_="detail-section-label", style="font-weight: 800; margin-top: 14px;"),
+                        ui.div(
+                            desc_text if desc_text else "No description provided.",
+                            class_="detail-description-text",
+                            style=desc_style,
+                        ),
+                        class_="detail-section",
+                    ),
+                    ui.div(
+                        ui.div("DEVELOPER COMMENTS", class_="detail-section-label", style="font-weight: 800; margin-top: 16px;"),
+                        ui.div(
+                            *comment_nodes,
+                            style=comment_style,
+                        ),
+                        class_="detail-section",
+                    ),
+                ),
+                title=f"Request Details — {row['request_id']}",
+                footer=ui.div(
+                    ui.input_action_button("btn_modal_open_manage", "Open in Manage Tab", class_="btn-primary compact-btn"),
+                    ui.input_action_button("btn_modal_close", "Close", class_="btn-outline-secondary compact-btn"),
+                    style="display: flex; justify-content: space-between; width: 100%; align-items: center;",
+                ),
+                size="l",
+                easy_close=True,
+            )
+            ui.modal_show(m)
+
+        @reactive.effect
+        @reactive.event(input.btn_modal_close)
+        def close_request_modal():
+            ui.modal_remove()
+
+        @reactive.effect
+        @reactive.event(input.btn_modal_open_manage)
+        def jump_to_manage_tab():
+            req_id = current_modal_req_id()
+            if req_id:
+                ui.update_select("manage_request_id", selected=req_id)
+                ui.update_navset("main_tabs", selected="Manage")
+            ui.modal_remove()
 
         @render.ui
         def manage_details_view():

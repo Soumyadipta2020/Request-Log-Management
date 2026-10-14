@@ -38,12 +38,20 @@ def create_app_ui(settings):
                         "Summary",
                         ui.div(
                             ui.div(
-                                section_header("Dashboard Filters"),
+                                ui.div(
+                                    ui.div(
+                                        ui.span("Dashboard Filters", class_="panel-title"),
+                                        ui.span(ui.output_text("filter_context", inline=True), class_="filter-header-count"),
+                                        class_="filter-header-left",
+                                    ),
+                                    ui.input_action_button("clear_filters", "Clear filters", class_="btn-outline-secondary compact-btn filter-clear-btn"),
+                                    class_="filter-header",
+                                ),
                                 ui.div(
                                     ui.input_select("filter_business_unit", "Business unit", [ALL_FILTER, *settings.business_units]),
                                     ui.input_select("filter_priority", "Priority", [ALL_FILTER, *settings.priorities]),
                                     ui.input_select("filter_status", "Status", [ALL_FILTER, *settings.request_statuses]),
-                                    ui.input_select("filter_requester", "Requester", choices=[ALL_FILTER], selectize=True),
+                                    ui.input_selectize("filter_requester", "Requester", choices=[ALL_FILTER]),
                                     ui.input_select("filter_platform", "Platform", [ALL_FILTER, *settings.platforms]),
                                     ui.input_select("filter_development_type", "Development type", [ALL_FILTER, *settings.development_types]),
                                     ui.input_date_range(
@@ -52,23 +60,13 @@ def create_app_ui(settings):
                                         start=DEFAULT_FILTER_START,
                                         end=DEFAULT_FILTER_END,
                                     ),
-                                    ui.input_select("filter_developer", "Developer", choices=[ALL_FILTER], selectize=True),
+                                    ui.input_selectize("filter_developer", "Developer", choices=[ALL_FILTER]),
                                     class_="filter-grid",
-                                ),
-                                ui.div(
-                                    ui.input_action_button("clear_filters", "Clear filters", class_="btn-outline-secondary compact-btn"),
-                                    ui.output_text("filter_context"),
-                                    class_="filter-actions",
                                 ),
                                 class_="content-panel filter-panel",
                             ),
                             ui.output_ui("summary_metrics"),
                             ui.div(
-                                ui.div(
-                                    section_header("Status Mix"),
-                                    output_widget("status_chart"),
-                                    class_="content-panel",
-                                ),
                                 ui.div(
                                     section_header("Platform Mix"),
                                     output_widget("platform_chart"),
@@ -82,12 +80,34 @@ def create_app_ui(settings):
                                 ui.div(
                                     section_header("Monthly Requests", "Stacked by priority category"),
                                     output_widget("monthly_priority_chart"),
-                                    class_="content-panel chart-full-width",
+                                    class_="content-panel chart-bar-panel",
                                 ),
                                 class_="dashboard-grid",
                             ),
                             ui.div(
-                                section_header("Recent Requests", "Latest 25 requests in the current filter"),
+                                ui.div(
+                                    ui.div(
+                                        ui.div("Recent Requests", class_="panel-title"),
+                                        class_="table-header-left",
+                                    ),
+                                    ui.div(
+                                        ui.span("Latest 25 requests in the current filter", class_="panel-subtitle"),
+                                        ui.download_button(
+                                            "download_table",
+                                            "Export",
+                                            icon=ui.HTML(
+                                                '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px; vertical-align: -1px;">'
+                                                '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>'
+                                                '<polyline points="7 10 12 15 17 10"></polyline>'
+                                                '<line x1="12" y1="15" x2="12" y2="3"></line>'
+                                                '</svg>'
+                                            ),
+                                            class_="btn-outline-secondary compact-btn table-download-btn",
+                                        ),
+                                        class_="table-header-right",
+                                    ),
+                                    class_="section-header table-header",
+                                ),
                                 ui.output_data_frame("recent_requests"),
                                 class_="content-panel table-panel",
                             ),
@@ -143,7 +163,7 @@ def create_app_ui(settings):
                             ui.div(
                                 ui.div(
                                     section_header("Select Request"),
-                                    ui.input_select("manage_request_id", "Request", choices={"": "No requests loaded"}, selectize=True),
+                                    ui.input_selectize("manage_request_id", "Request", choices={"": "No requests loaded"}),
                                     class_="content-panel",
                                     style="margin-bottom: 14px;",
                                 ),
