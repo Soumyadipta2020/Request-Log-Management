@@ -22,7 +22,7 @@ from request_log.constants import (
     SVG_PENDING,
     SVG_TOTAL,
 )
-from request_log.server.charts import empty_chart, plot_template
+from request_log.server.charts import empty_chart, get_integer_dtick, plot_template
 from request_log.storage import COLUMNS, ClusterStartingError, empty_requests, new_request
 from request_log.ui.components import metric_card, sidebar_link
 
@@ -174,17 +174,17 @@ def create_server(settings, store):
         @reactive.effect
         @reactive.event(input.nav_visuals)
         def show_visuals():
-            ui.update_navset("main_tabs", selected="Summary")
+            ui.update_navs("main_tabs", selected="Summary")
 
         @reactive.effect
         @reactive.event(input.nav_log_request)
         def show_log_request():
-            ui.update_navset("main_tabs", selected="Log Request")
+            ui.update_navs("main_tabs", selected="Log Request")
 
         @reactive.effect
         @reactive.event(input.nav_manage)
         def show_manage():
-            ui.update_navset("main_tabs", selected="Manage")
+            ui.update_navs("main_tabs", selected="Manage")
 
         @render.ui
         def cluster_banner():
@@ -318,6 +318,10 @@ def create_server(settings, store):
                 .rename(columns={"priority": "Priority", "size": "Requests"})
                 .sort_values("MonthStart")
             )
+            monthly_totals = trend.groupby("MonthStart")["Requests"].sum()
+            max_requests = int(monthly_totals.max()) if not monthly_totals.empty else 1
+            dtick = get_integer_dtick(max_requests)
+
             fig = px.bar(
                 trend,
                 x="Month",
@@ -328,8 +332,14 @@ def create_server(settings, store):
                 color_discrete_sequence=BG_COLORS,
             )
             fig.update_layout(plot_template("Monthly requests")["layout"], barmode="stack", showlegend=False)
-            fig.update_layout(height=220, margin=dict(l=28, r=16, t=10, b=30))
-            fig.update_yaxes(dtick=1, rangemode="tozero")
+            fig.update_layout(height=220, margin=dict(l=42, r=16, t=10, b=30))
+            fig.update_yaxes(
+                dtick=dtick,
+                tick0=0,
+                rangemode="tozero",
+                automargin=True,
+                tickformat="d",
+            )
             fig.update_traces(hovertemplate="%{x}<br>%{fullData.name}: %{y} requests<extra></extra>")
             return fig
 
@@ -720,7 +730,7 @@ def create_server(settings, store):
             req_id = current_modal_req_id()
             if req_id:
                 ui.update_select("manage_request_id", selected=req_id)
-                ui.update_navset("main_tabs", selected="Manage")
+                ui.update_navs("main_tabs", selected="Manage")
             ui.modal_remove()
 
         @render.ui
