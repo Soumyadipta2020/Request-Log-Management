@@ -539,7 +539,7 @@ def create_server(settings, store):
             
             return render.DataGrid(visible, height="480px", filters=True, styles=table_styles)
 
-        @render.download_button(
+        @render.download(
             filename=lambda: f"requests_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
         )
         def download_table():
