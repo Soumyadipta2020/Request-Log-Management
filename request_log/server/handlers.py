@@ -121,6 +121,35 @@ def create_server(settings, store):
                     filtered = filtered[filtered["log_date"].dt.date <= date_value(end)]
             return filtered
 
+        @reactive.calc
+        def manage_filtered_requests() -> pd.DataFrame:
+            data = requests()
+            if data.empty:
+                return data
+
+            filtered = data.copy()
+            filters = {
+                "buisness_unit": input.manage_filter_business_unit(),
+                "priority": input.manage_filter_priority(),
+                "status": input.manage_filter_status(),
+                "platfor": input.manage_filter_platform(),
+                "dev_type": input.manage_filter_development_type(),
+                "requester": input.manage_filter_requester(),
+                "developer_email": input.manage_filter_developer(),
+            }
+            for column, selected in filters.items():
+                if selected and selected != ALL_FILTER:
+                    filtered = filtered[filtered[column].astype(str) == selected]
+
+            date_range = input.manage_filter_created()
+            if date_range:
+                start, end = date_range
+                if start:
+                    filtered = filtered[filtered["log_date"].dt.date >= date_value(start)]
+                if end:
+                    filtered = filtered[filtered["log_date"].dt.date <= date_value(end)]
+            return filtered
+
         @reactive.effect
         def update_dynamic_filters():
             data = requests()
@@ -135,14 +164,21 @@ def create_server(settings, store):
                 ui.update_select("filter_requester", choices=requesters, selected=current_req if current_req in requesters else ALL_FILTER)
                 ui.update_select("filter_developer", choices=developers, selected=current_dev if current_dev in developers else ALL_FILTER)
 
+                current_m_req = input.manage_filter_requester()
+                current_m_dev = input.manage_filter_developer()
+                ui.update_select("manage_filter_requester", choices=requesters, selected=current_m_req if current_m_req in requesters else ALL_FILTER)
+                ui.update_select("manage_filter_developer", choices=developers, selected=current_m_dev if current_m_dev in developers else ALL_FILTER)
+
         @reactive.calc
         def request_choices() -> dict[str, str]:
-            data = requests()
+            data = manage_filtered_requests()
             if data.empty:
-                return {"": "No requests loaded"}
-            sorted_data = data.sort_values("log_date", ascending=False)
+                if requests().empty:
+                    return {"": "No requests loaded"}
+                return {"": "No requests match filters"}
+            sorted_data = data.sort_values("log_date", ascending=False, na_position="last")
             return {
-                row.request_id: f"[{row.request_id}] {row.title[:70]} | {row.status} | {row.developer_email}"
+                row.request_id: f"[{row.request_id}] {str(row.title or '')[:70]} | {row.status} | {row.developer_email}"
                 for row in sorted_data.itertuples(index=False)
             }
 
@@ -213,6 +249,18 @@ def create_server(settings, store):
         def filter_context():
             total = len(requests())
             filtered_total = len(filtered_requests())
+            if filtered_total == total:
+                return f"Showing all {total} requests"
+            return f"Showing {filtered_total} of {total} requests"
+
+        @render.text
+        def manage_filter_context():
+            total = len(requests())
+            if total == 0:
+                return "No requests loaded"
+            filtered_total = len(manage_filtered_requests())
+            if filtered_total == 0:
+                return f"0 of {total} requests match filters"
             if filtered_total == total:
                 return f"Showing all {total} requests"
             return f"Showing {filtered_total} of {total} requests"
@@ -729,6 +777,7 @@ def create_server(settings, store):
         def jump_to_manage_tab():
             req_id = current_modal_req_id()
             if req_id:
+                clear_manage_filters_action()
                 ui.update_select("manage_request_id", selected=req_id)
                 ui.update_navs("main_tabs", selected="Manage")
             ui.modal_remove()
@@ -737,6 +786,8 @@ def create_server(settings, store):
         def manage_details_view():
             row = selected_request()
             if row is None:
+                if not requests().empty and manage_filtered_requests().empty:
+                    return ui.div("No requests match the selected filters. Clear or adjust filters above to view details.", class_="empty-state")
                 return ui.div("Select a request from the dropdown above to view its details.", class_="empty-state")
             
             log_date_str = ""
@@ -810,7 +861,16 @@ def create_server(settings, store):
 
         @reactive.effect
         def sync_manage_choices():
-            ui.update_select("manage_request_id", choices=request_choices())
+            choices = request_choices()
+            current = input.manage_request_id()
+            if choices and "" not in choices:
+                if current in choices:
+                    selected = current
+                else:
+                    selected = next(iter(choices.keys()))
+            else:
+                selected = ""
+            ui.update_select("manage_request_id", choices=choices, selected=selected)
 
         @reactive.effect
         def load_selected_request():
@@ -908,6 +968,21 @@ def create_server(settings, store):
             ui.update_text_area("manage_comment", value="")
             refresh_count.set(refresh_count() + 1)
             ui.notification_show("Request updated.", type="message", duration=4)
+
+        def clear_manage_filters_action():
+            ui.update_select("manage_filter_business_unit", selected=ALL_FILTER)
+            ui.update_select("manage_filter_priority", selected=ALL_FILTER)
+            ui.update_select("manage_filter_status", selected=ALL_FILTER)
+            ui.update_select("manage_filter_platform", selected=ALL_FILTER)
+            ui.update_select("manage_filter_development_type", selected=ALL_FILTER)
+            ui.update_select("manage_filter_requester", selected=ALL_FILTER)
+            ui.update_select("manage_filter_developer", selected=ALL_FILTER)
+            ui.update_date_range("manage_filter_created", start=DEFAULT_FILTER_START, end=DEFAULT_FILTER_END)
+
+        @reactive.effect
+        @reactive.event(input.manage_clear_filters)
+        def clear_manage_filters():
+            clear_manage_filters_action()
 
         @reactive.effect
         @reactive.event(input.clear_filters)

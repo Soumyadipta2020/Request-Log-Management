@@ -162,6 +162,35 @@ def create_app_ui(settings):
                         ui.div(
                             ui.div(
                                 ui.div(
+                                    ui.div(
+                                        ui.div(
+                                            ui.span("Filter Requests", class_="panel-title"),
+                                            ui.span(ui.output_text("manage_filter_context", inline=True), class_="filter-header-count"),
+                                            class_="filter-header-left",
+                                        ),
+                                        ui.input_action_button("manage_clear_filters", "Clear filters", class_="btn-outline-secondary compact-btn filter-clear-btn"),
+                                        class_="filter-header",
+                                    ),
+                                    ui.div(
+                                        ui.input_select("manage_filter_business_unit", "Business unit", [ALL_FILTER, *settings.business_units]),
+                                        ui.input_select("manage_filter_priority", "Priority", [ALL_FILTER, *settings.priorities]),
+                                        ui.input_select("manage_filter_status", "Status", [ALL_FILTER, *settings.request_statuses]),
+                                        ui.input_selectize("manage_filter_requester", "Requester", choices=[ALL_FILTER]),
+                                        ui.input_select("manage_filter_platform", "Platform", [ALL_FILTER, *settings.platforms]),
+                                        ui.input_select("manage_filter_development_type", "Development type", [ALL_FILTER, *settings.development_types]),
+                                        ui.input_date_range(
+                                            "manage_filter_created",
+                                            "Created date",
+                                            start=DEFAULT_FILTER_START,
+                                            end=DEFAULT_FILTER_END,
+                                        ),
+                                        ui.input_selectize("manage_filter_developer", "Developer", choices=[ALL_FILTER]),
+                                        class_="filter-grid",
+                                    ),
+                                    class_="content-panel filter-panel",
+                                    style="margin-bottom: 14px;",
+                                ),
+                                ui.div(
                                     section_header("Select Request"),
                                     ui.input_selectize("manage_request_id", "Request", choices={"": "No requests loaded"}),
                                     class_="content-panel",
