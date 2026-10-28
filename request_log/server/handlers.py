@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+import asyncio
 
 import pandas as pd
 import plotly.express as px
@@ -882,9 +883,224 @@ def create_server(settings, store):
             ui.update_date("manage_expected_end_date", value=date_value(row["expected_end_date"]))
             ui.update_text("manage_log_date", value=str(row["log_date"]))
 
+        submit_status = reactive.value({"state": "idle"})
+        update_status = reactive.value({"state": "idle"})
+
+        @render.ui
+        def submit_modal_body():
+            st = submit_status()
+            state = st.get("state")
+            if state == "submitting":
+                return ui.div(
+                    ui.div(class_="status-modal-spinner"),
+                    ui.div("Submitting Request...", class_="status-modal-title"),
+                    ui.div(
+                        "Please wait while your request is being logged and assigned.",
+                        class_="status-modal-subtitle",
+                    ),
+                    class_="status-modal-content",
+                )
+            elif state == "success":
+                return ui.div(
+                    ui.div(
+                        ui.HTML(
+                            '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">'
+                            '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>'
+                            '<polyline points="22 4 12 14.01 9 11.01"></polyline>'
+                            '</svg>'
+                        ),
+                        class_="status-modal-icon-circle success",
+                    ),
+                    ui.div("Request Submitted Successfully!", class_="status-modal-title"),
+                    ui.div("Your request has been logged and assigned.", class_="status-modal-subtitle"),
+                    ui.div(
+                        ui.div("REQUEST NUMBER", class_="status-modal-id-label"),
+                        ui.div(st.get("request_id", ""), class_="status-modal-id-value"),
+                        ui.div(
+                            ui.div(
+                                ui.span("Title:"),
+                                ui.strong(st.get("title", "")[:45] + ("..." if len(st.get("title", "")) > 45 else "")),
+                                class_="status-modal-detail-row",
+                            ),
+                            ui.div(
+                                ui.span("Assigned to:"),
+                                ui.strong(st.get("developer_email", "")),
+                                class_="status-modal-detail-row",
+                            ),
+                            ui.div(
+                                ui.span("Business Unit:"),
+                                ui.strong(st.get("buisness_unit", "")),
+                                class_="status-modal-detail-row",
+                            ),
+                            class_="status-modal-details",
+                        ),
+                        class_="status-modal-badge-card",
+                    ),
+                    ui.tags.button(
+                        "OK",
+                        type="button",
+                        class_="status-modal-ok-btn",
+                        data_bs_dismiss="modal",
+                        data_dismiss="modal",
+                        autofocus="autofocus",
+                        onclick="""
+                            var m = window.bootstrap && window.bootstrap.Modal.getInstance(document.getElementById('shiny-modal'));
+                            if (m) { m.hide(); }
+                            setTimeout(function() {
+                                $('.modal-backdrop').remove();
+                                $('#shiny-modal-wrapper').empty();
+                                $('body').removeClass('modal-open').css({'overflow': '', 'padding-right': ''});
+                            }, 50);
+                            Shiny.setInputValue('submit_modal_closed', Math.random());
+                        """,
+                    ),
+                    class_="status-modal-content",
+                )
+            elif state == "error":
+                return ui.div(
+                    ui.div(
+                        ui.HTML(
+                            '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'
+                            '<circle cx="12" cy="12" r="10"></circle>'
+                            '<line x1="12" y1="8" x2="12" y2="12"></line>'
+                            '<line x1="12" y1="16" x2="12.01" y2="16"></line>'
+                            '</svg>'
+                        ),
+                        class_="status-modal-icon-circle error",
+                    ),
+                    ui.div("Submission Failed", class_="status-modal-title"),
+                    ui.div(st.get("error", "An error occurred."), class_="status-modal-subtitle"),
+                    ui.tags.button(
+                        "OK",
+                        type="button",
+                        class_="status-modal-ok-btn",
+                        data_bs_dismiss="modal",
+                        data_dismiss="modal",
+                        autofocus="autofocus",
+                        onclick="""
+                            var m = window.bootstrap && window.bootstrap.Modal.getInstance(document.getElementById('shiny-modal'));
+                            if (m) { m.hide(); }
+                            setTimeout(function() {
+                                $('.modal-backdrop').remove();
+                                $('#shiny-modal-wrapper').empty();
+                                $('body').removeClass('modal-open').css({'overflow': '', 'padding-right': ''});
+                            }, 50);
+                            Shiny.setInputValue('submit_modal_closed', Math.random());
+                        """,
+                    ),
+                    class_="status-modal-content",
+                )
+            return ui.div()
+
+        @render.ui
+        def update_modal_body():
+            st = update_status()
+            state = st.get("state")
+            if state == "submitting":
+                return ui.div(
+                    ui.div(class_="status-modal-spinner"),
+                    ui.div("Saving Update...", class_="status-modal-title"),
+                    ui.div(
+                        f"Please wait while request {st.get('request_id', '')} is being updated.",
+                        class_="status-modal-subtitle",
+                    ),
+                    class_="status-modal-content",
+                )
+            elif state == "success":
+                return ui.div(
+                    ui.div(
+                        ui.HTML(
+                            '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">'
+                            '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>'
+                            '<polyline points="22 4 12 14.01 9 11.01"></polyline>'
+                            '</svg>'
+                        ),
+                        class_="status-modal-icon-circle success",
+                    ),
+                    ui.div("Successfully Updated!", class_="status-modal-title"),
+                    ui.div(f"Request {st.get('request_id', '')} has been updated successfully.", class_="status-modal-subtitle"),
+                    ui.div(
+                        ui.div("REQUEST UPDATED", class_="status-modal-id-label"),
+                        ui.div(st.get("request_id", ""), class_="status-modal-id-value"),
+                        ui.div(
+                            ui.div(
+                                ui.span("Status:"),
+                                ui.strong(st.get("status_val", "")),
+                                class_="status-modal-detail-row",
+                            ),
+                            ui.div(
+                                ui.span("Priority:"),
+                                ui.strong(st.get("priority", "")),
+                                class_="status-modal-detail-row",
+                            ),
+                            ui.div(
+                                ui.span("Expected End Date:"),
+                                ui.strong(st.get("expected_end_date", "")),
+                                class_="status-modal-detail-row",
+                            ),
+                            class_="status-modal-details",
+                        ),
+                        class_="status-modal-badge-card",
+                    ),
+                    ui.tags.button(
+                        "OK",
+                        type="button",
+                        class_="status-modal-ok-btn",
+                        data_bs_dismiss="modal",
+                        data_dismiss="modal",
+                        autofocus="autofocus",
+                        onclick="""
+                            var m = window.bootstrap && window.bootstrap.Modal.getInstance(document.getElementById('shiny-modal'));
+                            if (m) { m.hide(); }
+                            setTimeout(function() {
+                                $('.modal-backdrop').remove();
+                                $('#shiny-modal-wrapper').empty();
+                                $('body').removeClass('modal-open').css({'overflow': '', 'padding-right': ''});
+                            }, 50);
+                            Shiny.setInputValue('update_modal_closed', Math.random());
+                        """,
+                    ),
+                    class_="status-modal-content",
+                )
+            elif state == "error":
+                return ui.div(
+                    ui.div(
+                        ui.HTML(
+                            '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'
+                            '<circle cx="12" cy="12" r="10"></circle>'
+                            '<line x1="12" y1="8" x2="12" y2="12"></line>'
+                            '<line x1="12" y1="16" x2="12.01" y2="16"></line>'
+                            '</svg>'
+                        ),
+                        class_="status-modal-icon-circle error",
+                    ),
+                    ui.div("Update Failed", class_="status-modal-title"),
+                    ui.div(st.get("error", "An error occurred."), class_="status-modal-subtitle"),
+                    ui.tags.button(
+                        "OK",
+                        type="button",
+                        class_="status-modal-ok-btn",
+                        data_bs_dismiss="modal",
+                        data_dismiss="modal",
+                        autofocus="autofocus",
+                        onclick="""
+                            var m = window.bootstrap && window.bootstrap.Modal.getInstance(document.getElementById('shiny-modal'));
+                            if (m) { m.hide(); }
+                            setTimeout(function() {
+                                $('.modal-backdrop').remove();
+                                $('#shiny-modal-wrapper').empty();
+                                $('body').removeClass('modal-open').css({'overflow': '', 'padding-right': ''});
+                            }, 50);
+                            Shiny.setInputValue('update_modal_closed', Math.random());
+                        """,
+                    ),
+                    class_="status-modal-content",
+                )
+            return ui.div()
+
         @reactive.effect
         @reactive.event(input.submit_request)
-        def submit_request():
+        async def submit_request():
             title = input.title().strip()
             description = input.description().strip()
             email = input.email().strip()
@@ -896,16 +1112,27 @@ def create_server(settings, store):
                 ui.notification_show("Please enter a valid email address.", type="warning", duration=4)
                 return
 
+            submit_status.set({"state": "submitting"})
+            ui.modal_show(
+                ui.modal(
+                    ui.output_ui("submit_modal_body"),
+                    title=None,
+                    footer=None,
+                    easy_close=False,
+                    size="m",
+                )
+            )
+            await asyncio.sleep(0.4)
+
             data = requests()
-            if data.empty:
-                next_id = "REQ000001"
-            else:
-                req_ids = data["request_id"][data["request_id"].str.startswith("REQ", na=False)]
-                if req_ids.empty:
-                    next_id = "REQ000001"
-                else:
-                    max_num = req_ids.str.replace("REQ", "").astype(int).max()
-                    next_id = f"REQ{max_num + 1:06d}"
+            next_id = "REQ000001"
+            if not data.empty and "request_id" in data.columns:
+                req_series = data["request_id"].dropna().astype(str)
+                req_ids = req_series[req_series.str.startswith("REQ")]
+                if not req_ids.empty:
+                    nums = pd.to_numeric(req_ids.str.replace("REQ", "", regex=False), errors="coerce").dropna()
+                    if not nums.empty:
+                        next_id = f"REQ{int(nums.max()) + 1:06d}"
 
             request = new_request(
                 request_id=next_id,
@@ -920,33 +1147,51 @@ def create_server(settings, store):
                 requester=email,
             )
             try:
-                store.add_request(request)
+                await asyncio.to_thread(store.add_request, request)
             except Exception as exc:
-                ui.notification_show(f"Request could not be saved: {exc}", type="error", duration=7)
+                submit_status.set({"state": "error", "error": f"Request could not be saved: {exc}"})
                 return
+
             refresh_count.set(refresh_count() + 1)
-            ui.notification_show(
-                ui.div(
-                    ui.p("Request successfully logged!", style="font-weight: bold; margin-bottom: 8px;"),
-                    ui.p(f"Request ID: {request['request_id']}", style="margin-bottom: 4px; font-family: monospace; font-size: 0.85rem;"),
-                    ui.p(f"Log Date: {request['log_date']}", style="margin-bottom: 4px;"),
-                    ui.p(f"Assigned to: {request['developer_email']}", style="margin-bottom: 0;"),
-                ),
-                type="message",
-                duration=10,
-            )
             clear_form_fields()
+            submit_status.set({
+                "state": "success",
+                "request_id": request["request_id"],
+                "title": request["title"],
+                "developer_email": request["developer_email"],
+                "buisness_unit": request["buisness_unit"],
+            })
+
+        @reactive.effect
+        @reactive.event(input.submit_modal_closed)
+        def on_submit_modal_closed():
+            ui.modal_remove()
 
         @reactive.effect
         @reactive.event(input.save_update)
-        def save_update():
+        async def save_update():
             request_id = input.manage_request_id()
             if not request_id:
                 ui.notification_show("Select a request first.", type="warning", duration=4)
                 return
             row = selected_request()
             if row is None:
+                ui.notification_show("Selected request details not found.", type="warning", duration=4)
                 return
+
+            update_status.set({"state": "submitting", "request_id": request_id})
+            ui.modal_show(
+                ui.modal(
+                    ui.output_ui("update_modal_body"),
+                    title=None,
+                    footer=None,
+                    easy_close=False,
+                    size="m",
+                )
+            )
+            await asyncio.sleep(0.4)
+
+            author = input.developer_email().strip() or str(row.get("developer_email", "") or "")
             updates = {
                 "status": input.manage_status(),
                 "priority": input.manage_priority(),
@@ -955,19 +1200,37 @@ def create_server(settings, store):
                 "buisness_unit": str(row["buisness_unit"]),
                 "dev_type": str(row["dev_type"]),
                 "platfor": str(row["platfor"]),
-                "developer_email": str(row["developer_email"]),
+                "developer_email": author,
                 "title": str(row["title"]),
                 "description": str(row["description"]),
                 "requester": str(row.get("requester", "")),
             }
             try:
-                store.update_request(request_id, updates, input.manage_comment(), input.developer_email())
+                await asyncio.to_thread(
+                    store.update_request,
+                    request_id,
+                    updates,
+                    input.manage_comment(),
+                    author,
+                )
             except Exception as exc:
-                ui.notification_show(f"Update failed: {exc}", type="error", duration=7)
+                update_status.set({"state": "error", "error": f"Update failed: {exc}"})
                 return
+
             ui.update_text_area("manage_comment", value="")
             refresh_count.set(refresh_count() + 1)
-            ui.notification_show("Request updated.", type="message", duration=4)
+            update_status.set({
+                "state": "success",
+                "request_id": request_id,
+                "status_val": updates["status"],
+                "priority": updates["priority"],
+                "expected_end_date": updates["expected_end_date"],
+            })
+
+        @reactive.effect
+        @reactive.event(input.update_modal_closed)
+        def on_update_modal_closed():
+            ui.modal_remove()
 
         def clear_manage_filters_action():
             ui.update_select("manage_filter_business_unit", selected=ALL_FILTER)

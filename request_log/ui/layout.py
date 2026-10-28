@@ -12,6 +12,15 @@ from request_log.ui.components import section_header
 def create_app_ui(settings):
     return ui.page_fluid(
         ui.include_css("www/styles.css"),
+        ui.tags.script("""
+            $(document).on('hidden.bs.modal hide.bs.modal', function () {
+                setTimeout(function() {
+                    $('.modal-backdrop').remove();
+                    $('#shiny-modal-wrapper').empty();
+                    $('body').removeClass('modal-open').css({'overflow': '', 'padding-right': ''});
+                }, 50);
+            });
+        """),
         ui.div(
             ui.tags.aside(
                 ui.img(src="british_gas.png", style="max-width: 120px; height: auto; margin-bottom: 18px;"),
