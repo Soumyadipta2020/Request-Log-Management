@@ -564,7 +564,17 @@ body {
 }
 
 .table-panel {
-  margin-top: 10px;
+  margin-top: 14px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.04);
+  padding: 16px 20px 14px;
+  transition: all 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.table-panel:hover {
+  box-shadow: 0 8px 26px rgba(15, 23, 42, 0.07);
 }
 
 .section-header {
@@ -592,12 +602,13 @@ body {
   align-items: center;
   display: flex;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
 .table-header-left {
   display: flex;
   align-items: center;
+  gap: 10px;
 }
 
 .table-header-right {
@@ -608,20 +619,26 @@ body {
 
 .table-download-btn {
   font-size: 0.74rem;
-  padding: 3px 10px;
-  height: 26px;
+  font-weight: 700;
+  padding: 5px 12px;
+  height: 30px;
   line-height: 1;
   display: inline-flex;
   align-items: center;
+  gap: 4px;
   color: var(--bg-blue);
-  border-color: var(--line);
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 9999px;
   text-decoration: none;
+  transition: all 150ms ease;
 }
 
 .table-download-btn:hover {
   background: var(--bg-cyan-soft);
   border-color: var(--bg-cyan);
-  color: var(--bg-blue);
+  color: var(--bg-blue-deep);
+  box-shadow: 0 2px 8px rgba(0, 174, 239, 0.2);
   text-decoration: none;
 }
 
@@ -893,24 +910,242 @@ body {
   white-space: pre-wrap;
 }
 
-table.dataTable {
-  font-size: 0.86rem;
+/* Modern Executive Table Theme Inspired by Dashboard Reference */
+.table-panel shiny-data-frame {
+  --shiny-datagrid-grid-header-bgcolor: #f8fafc;
+  --shiny-datagrid-grid-header-color: #475569;
+  --shiny-datagrid-grid-border-color: #e2e8f0;
+  --shiny-datagrid-grid-gridlines-color: #f1f5f9;
+  --shiny-datagrid-grid-body-hover-bgcolor: #fdf6f0;
+  --shiny-datagrid-cell-padding: 9px 12px;
+  font-family: inherit;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  display: block;
 }
 
+.table-panel table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+}
+
+.table-panel thead th,
+shiny-data-frame th {
+  background-color: #f8fafc !important;
+  color: #475569 !important;
+  font-size: 0.73rem !important;
+  font-weight: 800 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  border-top: none !important;
+  border-left: none !important;
+  border-right: none !important;
+  padding: 11px 14px !important;
+  vertical-align: middle !important;
+  white-space: nowrap;
+}
+
+.table-panel tbody tr,
+shiny-data-frame tbody tr {
+  background-color: #ffffff;
+  transition: background-color 140ms ease;
+}
+
+.table-panel tbody td,
+shiny-data-frame td {
+  padding: 10px 14px !important;
+  font-size: 0.83rem !important;
+  color: #1e293b !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+  border-top: none !important;
+  border-left: none !important;
+  border-right: none !important;
+  vertical-align: middle !important;
+  background-color: transparent;
+  transition: background-color 140ms ease;
+}
+
+/* Default row hover fallback (warm peach) */
+.table-panel tbody tr:hover td,
+shiny-data-frame tr:hover td {
+  background-color: #fdf6f0 !important;
+}
+
+/* Soft status-based row tints */
+tr.row-status-pending,
+tr.row-status-pending td,
+.row-status-pending {
+  background-color: rgba(0, 174, 239, 0.07) !important;
+}
+tr.row-status-pending:hover td,
+tr.row-status-pending:hover {
+  background-color: rgba(0, 174, 239, 0.15) !important;
+}
+
+tr.row-status-in-progress,
+tr.row-status-in-progress td,
+.row-status-in-progress {
+  background-color: rgba(4, 59, 122, 0.065) !important;
+}
+tr.row-status-in-progress:hover td,
+tr.row-status-in-progress:hover {
+  background-color: rgba(4, 59, 122, 0.13) !important;
+}
+
+tr.row-status-hold,
+tr.row-status-hold td,
+.row-status-hold {
+  background-color: rgba(243, 182, 31, 0.09) !important;
+}
+tr.row-status-hold:hover td,
+tr.row-status-hold:hover {
+  background-color: rgba(243, 182, 31, 0.17) !important;
+}
+
+tr.row-status-completed,
+tr.row-status-completed td,
+.row-status-completed {
+  background-color: rgba(122, 193, 67, 0.08) !important;
+}
+tr.row-status-completed:hover td,
+tr.row-status-completed:hover {
+  background-color: rgba(122, 193, 67, 0.16) !important;
+}
+
+tr.row-status-cancelled,
+tr.row-status-cancelled td,
+.row-status-cancelled {
+  background-color: rgba(255, 138, 138, 0.09) !important;
+}
+tr.row-status-cancelled:hover td,
+tr.row-status-cancelled:hover {
+  background-color: rgba(255, 138, 138, 0.17) !important;
+}
+
+/* Identifier styling (Request ID column) */
+td.tbl-id-cell,
+.tbl-id-cell {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+  font-size: 0.74rem !important;
+  font-weight: 750 !important;
+  color: #1e293b !important;
+  letter-spacing: 0.02em !important;
+  white-space: nowrap !important;
+}
+
+/* Identifier pill (e.g. [NW], [SE] in reference image) */
+.tbl-id-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1f5f9;
+  color: #334155;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.73rem;
+  font-weight: 750;
+  padding: 3px 8px;
+  border-radius: 9999px;
+  border: 1px solid #e2e8f0;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+/* Modern pill badges for Status and Priority */
+.tbl-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.73rem;
+  font-weight: 750;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  white-space: nowrap;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+}
+
+.tbl-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+/* Status variants */
+.tbl-pill.status-completed {
+  background: #dcfce7;
+  color: #15803d;
+}
+.tbl-pill.status-completed .tbl-status-dot {
+  background: #16a34a;
+}
+
+.tbl-pill.status-in-progress {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+.tbl-pill.status-in-progress .tbl-status-dot {
+  background: #0284c7;
+}
+
+.tbl-pill.status-pending {
+  background: #e0f7fa;
+  color: #00838f;
+}
+.tbl-pill.status-pending .tbl-status-dot {
+  background: #00aeef;
+}
+
+.tbl-pill.status-hold {
+  background: #fef3c7;
+  color: #b45309;
+}
+.tbl-pill.status-hold .tbl-status-dot {
+  background: #f59e0b;
+}
+
+.tbl-pill.status-cancelled {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+.tbl-pill.status-cancelled .tbl-status-dot {
+  background: #ef4444;
+}
+
+/* Priority variants */
+.tbl-pill.prio-high {
+  background: #fee2e2;
+  color: #dc2626;
+}
+.tbl-pill.prio-medium {
+  background: #fef3c7;
+  color: #b45309;
+}
+.tbl-pill.prio-low {
+  background: #f0fdfa;
+  color: #0d9488;
+}
+
+/* Sleek View button */
 .table-show-btn {
-  background: #edf8fb;
-  border: 1px solid #bce4f5;
-  border-radius: 4px;
-  color: #043b7a;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 9999px;
+  color: #334155;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
+  gap: 3px;
   font-family: inherit;
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   font-weight: 700;
   line-height: 1;
-  padding: 4px 8px;
-  transition: all 120ms ease;
+  padding: 4px 10px;
+  transition: all 140ms ease;
   white-space: nowrap;
 }
 
@@ -918,40 +1153,21 @@ table.dataTable {
   background: #00aeef;
   border-color: #00aeef;
   color: #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 174, 239, 0.28);
 }
 
 .table-show-btn.empty {
   background: #f8fafc;
   border: 1px dashed #cbd5e1;
-  color: #64748b;
+  color: #94a3b8;
   font-weight: 600;
 }
 
 .table-show-btn.empty:hover {
-  background: #e2e8f0;
+  background: #f1f5f9;
   border-color: #94a3b8;
-  color: #1e293b;
-}
-
-/* Conditional Formatting for Table Rows based on Status */
-.row-status-pending {
-  background-color: rgba(0, 174, 239, 0.09) !important;
-}
-
-.row-status-in-progress {
-  background-color: rgba(4, 59, 122, 0.08) !important;
-}
-
-.row-status-hold {
-  background-color: rgba(243, 182, 31, 0.12) !important;
-}
-
-.row-status-completed {
-  background-color: rgba(122, 193, 67, 0.12) !important;
-}
-
-.row-status-cancelled {
-  background-color: rgba(255, 138, 138, 0.13) !important;
+  color: #475569;
+  box-shadow: none;
 }
 
 @media (max-width: 1100px) {

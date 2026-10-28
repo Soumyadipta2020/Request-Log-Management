@@ -624,8 +624,23 @@ def create_server(settings, store):
                 from request_log.storage import COLUMNS
                 visible = pd.DataFrame(columns=COLUMNS)
             else:
-                visible = data.sort_values("log_date", ascending=False).head(25).copy()
-            
+                visible = data.sort_values("log_date", ascending=False).copy()
+
+            def make_priority_pill(priority: str):
+                p_raw = str(priority).strip()
+                p_slug = p_raw.lower().replace(" ", "-")
+                return ui.HTML(f'<span class="tbl-pill prio-{p_slug}">{p_raw}</span>')
+
+            def make_status_pill(status: str):
+                s_raw = str(status).strip()
+                s_slug = s_raw.lower().replace(" ", "-")
+                return ui.HTML(
+                    f'<span class="tbl-pill status-{s_slug}">'
+                    f'<span class="tbl-status-dot"></span>'
+                    f'{s_raw}'
+                    f'</span>'
+                )
+
             def make_show_btn(req_id: str, field: str, label: str = "View", empty: bool = False):
                 empty_cls = " empty" if empty else ""
                 title_desc = f"Click to view {field}" if not empty else f"No {field} yet (click to view details)"
@@ -633,7 +648,7 @@ def create_server(settings, store):
                     f'<button type="button" class="table-show-btn{empty_cls}" '
                     f'title="{title_desc}" '
                     f'onclick="Shiny.setInputValue(\'show_request_details_id\', \'{req_id}:{field}\', {{priority: \'event\'}}); event.stopPropagation();">'
-                    f'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 4px;">'
+                    f'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -1px; margin-right: 3px;">'
                     f'<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>'
                     f'<circle cx="12" cy="12" r="3"></circle>'
                     f'</svg>'
@@ -641,6 +656,7 @@ def create_server(settings, store):
                     f'</button>'
                 )
 
+            raw_statuses = []
             if not visible.empty:
                 def format_table_date(val) -> str:
                     if pd.isna(val) or not str(val).strip() or str(val).strip() in ("None", "nan", "NaT"):
@@ -658,65 +674,95 @@ def create_server(settings, store):
                 if "expected_end_date" in visible.columns:
                     visible["expected_end_date"] = visible["expected_end_date"].apply(format_table_date)
                 
+                id_col = []
+                prio_col = []
+                status_col = []
                 desc_col = []
                 comment_col = []
                 for row in visible.itertuples():
                     rid = str(row.request_id)
+                    raw_s = str(getattr(row, "status", ""))
+                    raw_statuses.append(raw_s)
+                    id_col.append(rid)
+                    prio_col.append(make_priority_pill(getattr(row, "priority", "")))
+                    status_col.append(make_status_pill(raw_s))
                     desc_col.append(make_show_btn(rid, "description", "View"))
                     
                     raw_comment = getattr(row, "dev_comment", "")
                     has_comment = bool(raw_comment and str(raw_comment).strip() and str(raw_comment).strip() not in ("None", "nan"))
                     comment_col.append(make_show_btn(rid, "comment", "View" if has_comment else "None", empty=not has_comment))
                 
+                visible["request_id"] = id_col
+                visible["priority"] = prio_col
+                visible["status"] = status_col
                 visible["description"] = desc_col
                 visible["dev_comment"] = comment_col
 
             column_mapping = {
                 "request_id": "Request ID",
-                "requester": "Requester",
                 "buisness_unit": "Business Unit",
                 "platfor": "Platform",
                 "dev_type": "Dev Type",
                 "priority": "Priority",
-                "log_date": "Log Date",
-                "expected_end_date": "Expected End Date",
                 "title": "Title",
-                "description": "Description",
-                "developer_email": "Developer Email",
                 "status": "Status",
+                "requester": "Requester",
+                "log_date": "Log Date",
+                "description": "Description",
+                "expected_end_date": "Expected End Date",
+                "developer_email": "Developer Email",
                 "dev_comment": "Dev Comment",
             }
             visible = visible.rename(columns=column_mapping)
 
-            # Conditional formatting: whole rows styled by status
+            ordered_columns = [
+                "Request ID",
+                "Business Unit",
+                "Platform",
+                "Dev Type",
+                "Priority",
+                "Title",
+                "Status",
+                "Requester",
+                "Log Date",
+                "Description",
+                "Expected End Date",
+                "Developer Email",
+                "Dev Comment",
+            ]
+            visible = visible[[c for c in ordered_columns if c in visible.columns]]
+
+            # Soft row-wise coloring based on status
             status_row_styles = {
                 "pending": {
-                    "style": {"background-color": "rgba(0, 174, 239, 0.09)"},
+                    "style": {"background-color": "rgba(0, 174, 239, 0.07)"},
                     "class": "row-status-pending",
                 },
                 "in progress": {
-                    "style": {"background-color": "rgba(4, 59, 122, 0.08)"},
+                    "style": {"background-color": "rgba(4, 59, 122, 0.065)"},
                     "class": "row-status-in-progress",
                 },
                 "hold": {
-                    "style": {"background-color": "rgba(243, 182, 31, 0.12)"},
+                    "style": {"background-color": "rgba(243, 182, 31, 0.09)"},
                     "class": "row-status-hold",
                 },
                 "completed": {
-                    "style": {"background-color": "rgba(122, 193, 67, 0.12)"},
+                    "style": {"background-color": "rgba(122, 193, 67, 0.08)"},
                     "class": "row-status-completed",
                 },
                 "cancelled": {
-                    "style": {"background-color": "rgba(255, 138, 138, 0.13)"},
+                    "style": {"background-color": "rgba(255, 138, 138, 0.09)"},
                     "class": "row-status-cancelled",
                 },
             }
 
-            table_styles = []
-            if not visible.empty and "Status" in visible.columns:
+            table_styles = [
+                {"cols": ["Request ID"], "class": "tbl-id-cell"}
+            ]
+            if not visible.empty and raw_statuses:
                 status_rows: dict[str, list[int]] = {}
-                for idx, val in enumerate(visible["Status"]):
-                    k = str(val).lower().strip()
+                for idx, s in enumerate(raw_statuses):
+                    k = s.lower().strip()
                     if k in status_row_styles:
                         status_rows.setdefault(k, []).append(idx)
 
@@ -726,7 +772,7 @@ def create_server(settings, store):
                         "style": status_row_styles[k]["style"],
                         "class": status_row_styles[k]["class"],
                     })
-            
+
             return render.DataGrid(visible, height="480px", filters=True, styles=table_styles)
 
         @render.download(
