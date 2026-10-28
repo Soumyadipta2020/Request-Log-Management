@@ -5,7 +5,14 @@ from datetime import date, timedelta
 from shiny import ui
 from shinywidgets import output_widget
 
-from request_log.constants import ALL_FILTER, DEFAULT_FILTER_END, DEFAULT_FILTER_START
+from request_log.constants import (
+    ALL_FILTER,
+    DEFAULT_FILTER_END,
+    DEFAULT_FILTER_START,
+    SVG_CALENDAR,
+    SVG_PLATFORM,
+    SVG_PRIORITY,
+)
 from request_log.ui.components import section_header
 
 
@@ -77,19 +84,19 @@ def create_app_ui(settings):
                             ui.output_ui("summary_metrics"),
                             ui.div(
                                 ui.div(
-                                    section_header("Platform Mix"),
+                                    section_header("Platform Mix", "Requests by platform", icon_svg=SVG_PLATFORM),
                                     output_widget("platform_chart"),
-                                    class_="content-panel",
+                                    class_="content-panel chart-card-panel",
                                 ),
                                 ui.div(
-                                    section_header("Priority Mix"),
+                                    section_header("Priority Mix", "Requests by severity", icon_svg=SVG_PRIORITY),
                                     output_widget("priority_chart"),
-                                    class_="content-panel",
+                                    class_="content-panel chart-card-panel",
                                 ),
                                 ui.div(
-                                    section_header("Monthly Requests", "Stacked by priority category"),
+                                    section_header("Monthly Requests Trend", "Monthly stacked trend across priority levels", icon_svg=SVG_CALENDAR),
                                     output_widget("monthly_priority_chart"),
-                                    class_="content-panel chart-bar-panel",
+                                    class_="content-panel chart-bar-panel chart-card-panel",
                                 ),
                                 class_="dashboard-grid",
                             ),

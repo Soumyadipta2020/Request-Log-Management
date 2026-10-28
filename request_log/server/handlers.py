@@ -291,7 +291,7 @@ def create_server(settings, store):
             data = filtered_requests()
             if data.empty:
                 fig = empty_chart("Requests by status")
-                fig.update_layout(height=220)
+                fig.update_layout(height=280)
                 return fig
 
             counts = data["status"].astype(str).value_counts()
@@ -306,15 +306,37 @@ def create_server(settings, store):
                 chart_data,
                 names="Status",
                 values="Requests",
-                hole=0.55,
+                hole=0.62,
                 color="Status",
                 color_discrete_map=STATUS_COLORS,
                 color_discrete_sequence=BG_COLORS,
             )
-            fig.update_traces(textinfo="label+value", textposition="outside", hovertemplate="%{label}: %{value} requests<extra></extra>")
-            fig.update_layout(plot_template("Requests by status")["layout"], showlegend=False)
-            fig.update_layout(height=220, margin=dict(l=10, r=10, t=10, b=12))
-            fig.add_annotation(text=f"{len(data)}<br>total", x=0.5, y=0.5, showarrow=False, font={"size": 14, "color": "#043b7a"})
+            fig.update_traces(
+                textinfo="label+value",
+                textposition="outside",
+                textfont=dict(size=11, color="#475569"),
+                marker=dict(line=dict(color="#ffffff", width=2)),
+                hovertemplate="<b>%{label}</b><br>Requests: <b>%{value:,}</b> (%{percent})<extra></extra>",
+            )
+            fig.update_layout(
+                plot_template("Requests by status")["layout"],
+                showlegend=False,
+                height=280,
+                margin=dict(l=15, r=15, t=18, b=18),
+                hoverlabel=dict(
+                    bgcolor="#0f172a",
+                    font_size=12,
+                    font_family="Inter, Segoe UI, sans-serif",
+                    font_color="#ffffff",
+                    bordercolor="#1e293b",
+                ),
+            )
+            fig.add_annotation(
+                text=f"<span style='font-size:22px; font-weight:850; color:#0f172a;'>{len(data)}</span><br><span style='font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.06em;'>total</span>",
+                x=0.5,
+                y=0.5,
+                showarrow=False,
+            )
             return fig
 
         @render_widget
@@ -322,7 +344,7 @@ def create_server(settings, store):
             data = filtered_requests()
             if data.empty:
                 fig = empty_chart("Priority mix")
-                fig.update_layout(height=220)
+                fig.update_layout(height=280)
                 return fig
 
             counts = data["priority"].astype(str).value_counts()
@@ -337,15 +359,37 @@ def create_server(settings, store):
                 chart_data,
                 names="Priority",
                 values="Requests",
-                hole=0.55,
+                hole=0.62,
                 color="Priority",
+                category_orders={"Priority": ["High", "Medium", "Low"]},
                 color_discrete_map=PRIORITY_COLORS,
-                color_discrete_sequence=BG_COLORS,
             )
-            fig.update_traces(textinfo="label+value", textposition="outside", hovertemplate="%{label}: %{value} requests<extra></extra>")
-            fig.update_layout(plot_template("Priority mix")["layout"], showlegend=False)
-            fig.update_layout(height=220, margin=dict(l=10, r=10, t=10, b=12))
-            fig.add_annotation(text=f"{len(data)}<br>total", x=0.5, y=0.5, showarrow=False, font={"size": 14, "color": "#043b7a"})
+            fig.update_traces(
+                textinfo="label+value",
+                textposition="outside",
+                textfont=dict(size=11, color="#475569"),
+                marker=dict(line=dict(color="#ffffff", width=2)),
+                hovertemplate="<b>%{label} Priority</b><br>Requests: <b>%{value:,}</b> (%{percent})<extra></extra>",
+            )
+            fig.update_layout(
+                plot_template("Priority mix")["layout"],
+                showlegend=False,
+                height=280,
+                margin=dict(l=15, r=15, t=18, b=18),
+                hoverlabel=dict(
+                    bgcolor="#0f172a",
+                    font_size=12,
+                    font_family="Inter, Segoe UI, sans-serif",
+                    font_color="#ffffff",
+                    bordercolor="#1e293b",
+                ),
+            )
+            fig.add_annotation(
+                text=f"<span style='font-size:22px; font-weight:850; color:#0f172a;'>{len(data)}</span><br><span style='font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.06em;'>total</span>",
+                x=0.5,
+                y=0.5,
+                showarrow=False,
+            )
             return fig
 
         @render_widget
@@ -353,21 +397,38 @@ def create_server(settings, store):
             data = filtered_requests()
             if data.empty or data["log_date"].dropna().empty:
                 fig = empty_chart("Monthly requests by priority")
-                fig.update_layout(height=220)
+                fig.update_layout(height=280)
                 return fig
 
-            trend = (
-                data.dropna(subset=["log_date"])
-                .assign(
-                    MonthStart=lambda frame: pd.to_datetime(frame["log_date"].dt.strftime("%Y-%m-01")),
-                    Month=lambda frame: frame["log_date"].dt.strftime("%b %Y"),
-                )
-                .groupby(["MonthStart", "Month", "priority"], as_index=False, observed=False)
-                .size()
-                .rename(columns={"priority": "Priority", "size": "Requests"})
+            valid_dates = data.dropna(subset=["log_date"]).copy()
+            valid_dates["MonthStart"] = pd.to_datetime(valid_dates["log_date"].dt.strftime("%Y-%m-01"))
+            valid_dates["Month"] = valid_dates["log_date"].dt.strftime("%b %Y")
+
+            month_map = (
+                valid_dates[["MonthStart", "Month"]]
+                .drop_duplicates()
                 .sort_values("MonthStart")
             )
-            monthly_totals = trend.groupby("MonthStart")["Requests"].sum()
+            sorted_months = month_map["Month"].tolist()
+
+            counts = (
+                valid_dates.groupby(["Month", "priority"], as_index=False, observed=False)
+                .size()
+                .rename(columns={"priority": "Priority", "size": "Requests"})
+            )
+
+            # Ensure all (Month, Priority) combinations exist so unified hover shows all categories
+            full_index = pd.MultiIndex.from_product(
+                [sorted_months, settings.priorities],
+                names=["Month", "Priority"]
+            )
+            trend = (
+                counts.set_index(["Month", "Priority"])
+                .reindex(full_index, fill_value=0)
+                .reset_index()
+            )
+
+            monthly_totals = trend.groupby("Month")["Requests"].sum()
             max_requests = int(monthly_totals.max()) if not monthly_totals.empty else 1
             dtick = get_integer_dtick(max_requests)
 
@@ -376,20 +437,69 @@ def create_server(settings, store):
                 x="Month",
                 y="Requests",
                 color="Priority",
-                category_orders={"Priority": settings.priorities},
+                category_orders={
+                    "Month": sorted_months,
+                    "Priority": ["Low", "Medium", "High"],
+                },
                 color_discrete_map=PRIORITY_COLORS,
-                color_discrete_sequence=BG_COLORS,
             )
-            fig.update_layout(plot_template("Monthly requests")["layout"], barmode="stack", showlegend=False)
-            fig.update_layout(height=220, margin=dict(l=42, r=16, t=10, b=30))
+
+            fig.update_traces(
+                marker_cornerradius=6,
+                hovertemplate="%{fullData.name}: %{y:,}<extra></extra>",
+            )
+
+            fig.update_layout(
+                barmode="stack",
+                bargap=0.38,
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                height=280,
+                font=dict(family="Inter, Segoe UI, sans-serif", size=12, color="#64748b"),
+                margin=dict(l=42, r=16, t=34, b=30),
+                showlegend=True,
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.04,
+                    xanchor="right",
+                    x=1.0,
+                    title_text="",
+                    font=dict(size=11, color="#475569", family="Inter, Segoe UI, sans-serif"),
+                    traceorder="normal",
+                    itemclick=False,
+                    itemdoubleclick=False,
+                ),
+                hovermode="x unified",
+                hoverlabel=dict(
+                    bgcolor="#0f172a",
+                    font_size=12,
+                    font_family="Inter, Segoe UI, sans-serif",
+                    font_color="#ffffff",
+                    bordercolor="#1e293b",
+                ),
+            )
+            fig.update_xaxes(
+                showgrid=False,
+                showline=True,
+                linecolor="#e2e8f0",
+                linewidth=1,
+                tickfont=dict(size=11, color="#64748b"),
+                title="",
+            )
             fig.update_yaxes(
+                showgrid=True,
+                gridcolor="rgba(226, 232, 240, 0.75)",
+                gridwidth=1,
+                showline=False,
+                tickfont=dict(size=11, color="#64748b"),
                 dtick=dtick,
                 tick0=0,
                 rangemode="tozero",
                 automargin=True,
-                tickformat="d",
+                tickformat=",d",
+                title="",
             )
-            fig.update_traces(hovertemplate="%{x}<br>%{fullData.name}: %{y} requests<extra></extra>")
             return fig
 
         @render_widget
@@ -397,7 +507,7 @@ def create_server(settings, store):
             data = filtered_requests()
             if data.empty:
                 fig = empty_chart("Platform mix")
-                fig.update_layout(height=220)
+                fig.update_layout(height=280)
                 return fig
 
             counts = data["platfor"].astype(str).value_counts()
@@ -412,14 +522,36 @@ def create_server(settings, store):
                 chart_data,
                 names="Platform",
                 values="Requests",
-                hole=0.55,
+                hole=0.62,
                 color="Platform",
                 color_discrete_sequence=BG_COLORS,
             )
-            fig.update_traces(textinfo="label+value", textposition="outside", hovertemplate="%{label}: %{value} requests<extra></extra>")
-            fig.update_layout(plot_template("Platform mix")["layout"], showlegend=False)
-            fig.update_layout(height=220, margin=dict(l=10, r=10, t=10, b=12))
-            fig.add_annotation(text=f"{len(data)}<br>total", x=0.5, y=0.5, showarrow=False, font={"size": 14, "color": "#043b7a"})
+            fig.update_traces(
+                textinfo="label+value",
+                textposition="outside",
+                textfont=dict(size=11, color="#475569"),
+                marker=dict(line=dict(color="#ffffff", width=2)),
+                hovertemplate="<b>%{label}</b><br>Requests: <b>%{value:,}</b> (%{percent})<extra></extra>",
+            )
+            fig.update_layout(
+                plot_template("Platform mix")["layout"],
+                showlegend=False,
+                height=280,
+                margin=dict(l=15, r=15, t=18, b=18),
+                hoverlabel=dict(
+                    bgcolor="#0f172a",
+                    font_size=12,
+                    font_family="Inter, Segoe UI, sans-serif",
+                    font_color="#ffffff",
+                    bordercolor="#1e293b",
+                ),
+            )
+            fig.add_annotation(
+                text=f"<span style='font-size:22px; font-weight:850; color:#0f172a;'>{len(data)}</span><br><span style='font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.06em;'>total</span>",
+                x=0.5,
+                y=0.5,
+                showarrow=False,
+            )
             return fig
 
         @render_widget
@@ -441,8 +573,13 @@ def create_server(settings, store):
                 color_continuous_scale=["#e6f7fb", "#00aeef", "#043b7a"],
                 text="Requests"
             )
-            fig.update_traces(textposition="outside")
-            fig.update_layout(plot_template("Assigned Work")["layout"], showlegend=False, coloraxis_showscale=False)
+            fig.update_traces(textposition="outside", marker_cornerradius=4, hovertemplate="<b>%{y}</b><br>Requests: <b>%{x:,}</b><extra></extra>")
+            fig.update_layout(
+                plot_template("Assigned Work")["layout"],
+                showlegend=False,
+                coloraxis_showscale=False,
+                hoverlabel=dict(bgcolor="#0f172a", font_size=12, font_color="#ffffff", bordercolor="#1e293b"),
+            )
             fig.update_layout(height=270)
             fig.update_xaxes(visible=False)
             fig.update_yaxes(title="")
@@ -467,8 +604,12 @@ def create_server(settings, store):
                 color_discrete_sequence=BG_COLORS,
                 text="Requests"
             )
-            fig.update_traces(textposition="outside")
-            fig.update_layout(plot_template("Business Unit Mix")["layout"], showlegend=False)
+            fig.update_traces(textposition="outside", marker_cornerradius=4, hovertemplate="<b>%{y}</b><br>Requests: <b>%{x:,}</b><extra></extra>")
+            fig.update_layout(
+                plot_template("Business Unit Mix")["layout"],
+                showlegend=False,
+                hoverlabel=dict(bgcolor="#0f172a", font_size=12, font_color="#ffffff", bordercolor="#1e293b"),
+            )
             fig.update_layout(height=270)
             fig.update_xaxes(visible=False)
             fig.update_yaxes(title="")

@@ -345,20 +345,55 @@ body {
 }
 
 .metric-card {
-  min-height: 88px;
+  min-height: 92px;
   overflow: hidden;
-  padding: 10px 14px;
+  padding: 12px 14px 10px;
   position: relative;
+  border-radius: 12px !important;
+  border: 1px solid rgba(207, 227, 238, 0.85);
+  box-shadow: 0 4px 14px rgba(4, 59, 122, 0.04);
+  transition: all 260ms cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: default;
 }
 
+/* Ambient corner glow by tone */
+.metric-card.blue {
+  background: radial-gradient(ellipse 65% 75% at 90% 12%, rgba(4, 59, 122, 0.08), transparent 75%), #ffffff;
+}
+.metric-card.cyan {
+  background: radial-gradient(ellipse 65% 75% at 90% 12%, rgba(0, 174, 239, 0.11), transparent 75%), #ffffff;
+}
+.metric-card.navy {
+  background: radial-gradient(ellipse 65% 75% at 90% 12%, rgba(2, 43, 95, 0.09), transparent 75%), #ffffff;
+}
+.metric-card.amber {
+  background: radial-gradient(ellipse 65% 75% at 90% 12%, rgba(246, 196, 83, 0.14), transparent 75%), #ffffff;
+}
+.metric-card.green {
+  background: radial-gradient(ellipse 65% 75% at 90% 12%, rgba(122, 193, 67, 0.12), transparent 75%), #ffffff;
+}
+.metric-card.red {
+  background: radial-gradient(ellipse 65% 75% at 90% 12%, rgba(255, 120, 117, 0.15), transparent 75%), #ffffff;
+}
+
+/* Top Accent Line */
 .metric-card::before {
-  background: linear-gradient(90deg, var(--bg-cyan), rgba(0, 174, 239, 0));
   content: "";
   height: 3px;
   left: 0;
   position: absolute;
   right: 0;
   top: 0;
+  background: linear-gradient(90deg, var(--bg-blue), rgba(4, 59, 122, 0));
+  transition: height 200ms ease;
+}
+
+.metric-card.cyan::before {
+  background: linear-gradient(90deg, var(--bg-cyan), rgba(0, 174, 239, 0));
+}
+
+.metric-card.navy::before {
+  background: linear-gradient(90deg, var(--bg-blue-deep), rgba(2, 43, 95, 0));
 }
 
 .metric-card.green::before {
@@ -371,6 +406,56 @@ body {
 
 .metric-card.red::before {
   background: linear-gradient(90deg, var(--bg-red), rgba(255, 138, 138, 0));
+}
+
+/* Luminous Glowing Hover Effects for Top Cards */
+.metric-card:hover {
+  transform: translateY(-3px);
+}
+
+.metric-card:hover::before {
+  height: 4px;
+}
+
+.metric-card.blue:hover {
+  border-color: rgba(4, 59, 122, 0.65) !important;
+  box-shadow: 0 10px 24px -2px rgba(4, 59, 122, 0.22), 0 0 16px 2px rgba(4, 59, 122, 0.16) !important;
+  background: radial-gradient(ellipse 70% 80% at 90% 12%, rgba(4, 59, 122, 0.16), transparent 75%), #ffffff !important;
+}
+
+.metric-card.cyan:hover {
+  border-color: rgba(0, 174, 239, 0.75) !important;
+  box-shadow: 0 10px 24px -2px rgba(0, 174, 239, 0.28), 0 0 18px 2px rgba(0, 174, 239, 0.20) !important;
+  background: radial-gradient(ellipse 70% 80% at 90% 12%, rgba(0, 174, 239, 0.22), transparent 75%), #ffffff !important;
+}
+
+.metric-card.navy:hover {
+  border-color: rgba(2, 43, 95, 0.70) !important;
+  box-shadow: 0 10px 24px -2px rgba(2, 43, 95, 0.25), 0 0 16px 2px rgba(2, 43, 95, 0.16) !important;
+  background: radial-gradient(ellipse 70% 80% at 90% 12%, rgba(2, 43, 95, 0.18), transparent 75%), #ffffff !important;
+}
+
+.metric-card.amber:hover {
+  border-color: rgba(246, 196, 83, 0.85) !important;
+  box-shadow: 0 10px 24px -2px rgba(246, 196, 83, 0.32), 0 0 18px 2px rgba(246, 196, 83, 0.22) !important;
+  background: radial-gradient(ellipse 70% 80% at 90% 12%, rgba(246, 196, 83, 0.25), transparent 75%), #ffffff !important;
+}
+
+.metric-card.green:hover {
+  border-color: rgba(122, 193, 67, 0.80) !important;
+  box-shadow: 0 10px 24px -2px rgba(122, 193, 67, 0.28), 0 0 18px 2px rgba(122, 193, 67, 0.20) !important;
+  background: radial-gradient(ellipse 70% 80% at 90% 12%, rgba(122, 193, 67, 0.24), transparent 75%), #ffffff !important;
+}
+
+.metric-card.red:hover {
+  border-color: rgba(255, 120, 117, 0.85) !important;
+  box-shadow: 0 10px 24px -2px rgba(255, 120, 117, 0.32), 0 0 20px 2px rgba(255, 120, 117, 0.22) !important;
+  background: radial-gradient(ellipse 70% 80% at 90% 12%, rgba(255, 120, 117, 0.26), transparent 75%), #ffffff !important;
+}
+
+.metric-card:hover .metric-icon {
+  transform: scale(1.08);
+  transition: transform 200ms ease;
 }
 
 .metric-label {
@@ -1136,5 +1221,86 @@ body:not(.modal-open) .modal-backdrop {
   color: #ffffff;
   transform: translateY(-1px);
   box-shadow: 0 4px 10px rgba(4, 59, 122, 0.35);
+}
+
+
+
+/* Modern Chart & Panel Enhancements */
+.section-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.panel-header-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(34, 193, 195, 0.12);
+  border: 1px solid rgba(34, 193, 195, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #0098a6;
+  flex-shrink: 0;
+}
+
+.panel-header-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.panel-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Modern Chart Cards & Luminous Glowing Hover Effects */
+.chart-card-panel {
+  border: 1px solid rgba(34, 193, 195, 0.35) !important;
+  border-radius: 14px !important;
+  background: radial-gradient(ellipse 55% 65% at 94% 8%, rgba(34, 193, 195, 0.05), transparent 75%), #ffffff !important;
+  box-shadow: 0 4px 18px rgba(4, 59, 122, 0.04) !important;
+  transition: all 260ms cubic-bezier(0.16, 1, 0.3, 1) !important;
+  position: relative;
+}
+
+.chart-card-panel:hover {
+  transform: translateY(-3px) !important;
+  border-color: rgba(0, 174, 239, 0.75) !important;
+  box-shadow: 0 14px 34px -4px rgba(0, 174, 239, 0.24), 0 0 22px 3px rgba(0, 174, 239, 0.16) !important;
+  background: radial-gradient(ellipse 60% 70% at 92% 8%, rgba(0, 174, 239, 0.12), transparent 75%), #ffffff !important;
+}
+
+/* Priority Mix card hover glow: warm/coral glow */
+.dashboard-grid > div:nth-child(2).chart-card-panel:hover {
+  border-color: rgba(246, 196, 83, 0.85) !important;
+  box-shadow: 0 14px 34px -4px rgba(246, 196, 83, 0.26), 0 0 22px 3px rgba(255, 120, 117, 0.18) !important;
+  background: radial-gradient(ellipse 60% 70% at 92% 8%, rgba(246, 196, 83, 0.14), transparent 75%), #ffffff !important;
+}
+
+/* Monthly Requests bar chart card hover glow: brilliant cyan/teal glow */
+.chart-bar-panel.chart-card-panel:hover {
+  border-color: rgba(34, 193, 195, 0.85) !important;
+  box-shadow: 0 16px 36px -4px rgba(34, 193, 195, 0.28), 0 0 24px 4px rgba(34, 193, 195, 0.20) !important;
+  background: radial-gradient(ellipse 55% 65% at 94% 8%, rgba(34, 193, 195, 0.14), transparent 75%), #ffffff !important;
+}
+
+.chart-card-panel:hover .panel-header-icon {
+  transform: scale(1.08);
+  border-color: rgba(34, 193, 195, 0.6);
+  background: rgba(34, 193, 195, 0.2);
+  transition: all 200ms ease;
+}
+
+/* Hide clutter modebar on modern chart cards */
+.chart-card-panel .modebar {
+  opacity: 0.2;
+  transition: opacity 200ms ease;
+}
+
+.chart-card-panel:hover .modebar {
+  opacity: 0.8;
 }
 

@@ -11,10 +11,18 @@ def metric_card(label: str, value: str, note: str, icon_svg: str, tone: str = "b
     )
 
 
-def section_header(title: str, subtitle: str = "") -> ui.Tag:
+def section_header(title: str, subtitle: str = "", icon_svg: str | None = None) -> ui.Tag:
+    title_box = [ui.div(title, class_="panel-title")]
+    if subtitle:
+        title_box.append(ui.div(subtitle, class_="panel-subtitle"))
+
+    left_elements = []
+    if icon_svg:
+        left_elements.append(ui.div(ui.HTML(icon_svg), class_="panel-header-icon"))
+    left_elements.append(ui.div(*title_box, class_="panel-title-group"))
+
     return ui.div(
-        ui.div(title, class_="panel-title"),
-        ui.div(subtitle, class_="panel-subtitle") if subtitle else None,
+        ui.div(*left_elements, class_="section-header-left"),
         class_="section-header",
     )
 
@@ -22,4 +30,3 @@ def section_header(title: str, subtitle: str = "") -> ui.Tag:
 def sidebar_link(input_id: str, label: str, active: bool = False) -> ui.Tag:
     state = " active" if active else ""
     return ui.input_action_link(input_id, label, class_=f"side-item{state}")
-

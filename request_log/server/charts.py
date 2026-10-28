@@ -33,8 +33,13 @@ def plot_template(title: str):
         "layout": {
             "paper_bgcolor": "rgba(0,0,0,0)",
             "plot_bgcolor": "rgba(0,0,0,0)",
-            "font": {"family": "Inter, Segoe UI, Arial", "color": "#172033", "size": 12},
-            "margin": {"l": 18, "r": 18, "t": 14, "b": 28},
+            "font": {"family": "Inter, Segoe UI, sans-serif", "color": "#64748b", "size": 12},
+            "margin": {"l": 20, "r": 20, "t": 20, "b": 24},
+            "hoverlabel": {
+                "bgcolor": "#0f172a",
+                "font": {"family": "Inter, Segoe UI, sans-serif", "size": 12, "color": "#ffffff"},
+                "bordercolor": "#1e293b",
+            },
         }
     }
 
@@ -53,7 +58,7 @@ def empty_chart(title: str, message: str = "No requests match these filters") ->
                 "x": 0.5,
                 "y": 0.5,
                 "showarrow": False,
-                "font": {"size": 14, "color": "#657386"},
+                "font": {"size": 13, "color": "#94a3b8"},
             }
         ],
     )
