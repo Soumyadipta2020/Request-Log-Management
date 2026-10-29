@@ -1289,6 +1289,15 @@ body:not(.modal-open) .modal-backdrop {
 }
 
 /* Floating Status Modal Styling */
+.status-modal-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.status-modal-wrapper:has(.status-modal-result) .modal-loading-view {
+  display: none !important;
+}
+
 .status-modal-content {
   text-align: center;
   padding: 28px 24px 20px;

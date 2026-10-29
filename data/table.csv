@@ -5,4 +5,5 @@ REQ000003,abc@gmail.com,Gas,Capacity App,Dev,High,2026-10-14 16:56:54,2026-10-28
 REQ000004,abc@gmail.com,Gas,Capacity App,Dev,High,2026-10-14 16:57:14,2026-10-28,test new 2,test new 2,abc@gmail.com,In Progress,
 REQ000005,abc@gmail.com,Gas,Capacity App,Dev,High,2026-10-14 16:58:59,2026-10-28,test 3,test 3,abc@gmail.com,Cancelled,
 REQ000006,xyz@gmail.com,Gas,Capacity App,Fault,High,2026-10-29 00:12:27,2026-12-31,test new,test new,abc@gmail.com,In Progress,2026-10-29 00:24:28 - abc@gmail.com: Working on it
-REQ000007,abcd@gmail.com,ES,Capacity App,Dev,High,2026-10-29 00:25:33,2026-11-12,Implement the resource coding,Add the new feature,gourav.das@gmail.com,Pending,
+REQ000007,abcd@gmail.com,ES,Capacity App,Dev,Medium,2026-10-29 00:25:33,2026-11-12,Implement the resource coding,Add the new feature,gourav.das@gmail.com,In Progress,
+REQ000008,abc@gmail.com,ES,PowerBI,Fault,High,2026-10-29 13:00:24,2026-11-12,FTE data not matching,FTE data not matching for actuals,harshit.kapoor@gmail.com,Pending,

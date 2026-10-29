@@ -1077,18 +1077,9 @@ def create_server(settings, store):
         def submit_modal_body():
             st = submit_status()
             state = st.get("state")
-            if state == "submitting":
+            if state == "success":
                 return ui.div(
-                    ui.div(class_="status-modal-spinner"),
-                    ui.div("Submitting Request...", class_="status-modal-title"),
-                    ui.div(
-                        "Please wait while your request is being logged and assigned.",
-                        class_="status-modal-subtitle",
-                    ),
-                    class_="status-modal-content",
-                )
-            elif state == "success":
-                return ui.div(
+                    ui.tags.style(".modal-loading-view { display: none !important; }"),
                     ui.div(
                         ui.HTML(
                             '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">'
@@ -1141,10 +1132,11 @@ def create_server(settings, store):
                             Shiny.setInputValue('submit_modal_closed', Math.random());
                         """,
                     ),
-                    class_="status-modal-content",
+                    class_="status-modal-content status-modal-result",
                 )
             elif state == "error":
                 return ui.div(
+                    ui.tags.style(".modal-loading-view { display: none !important; }"),
                     ui.div(
                         ui.HTML(
                             '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'
@@ -1175,26 +1167,17 @@ def create_server(settings, store):
                             Shiny.setInputValue('submit_modal_closed', Math.random());
                         """,
                     ),
-                    class_="status-modal-content",
+                    class_="status-modal-content status-modal-result",
                 )
-            return ui.div()
+            return None
 
         @render.ui
         def update_modal_body():
             st = update_status()
             state = st.get("state")
-            if state == "submitting":
+            if state == "success":
                 return ui.div(
-                    ui.div(class_="status-modal-spinner"),
-                    ui.div("Saving Update...", class_="status-modal-title"),
-                    ui.div(
-                        f"Please wait while request {st.get('request_id', '')} is being updated.",
-                        class_="status-modal-subtitle",
-                    ),
-                    class_="status-modal-content",
-                )
-            elif state == "success":
-                return ui.div(
+                    ui.tags.style(".modal-loading-view { display: none !important; }"),
                     ui.div(
                         ui.HTML(
                             '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">'
@@ -1247,10 +1230,11 @@ def create_server(settings, store):
                             Shiny.setInputValue('update_modal_closed', Math.random());
                         """,
                     ),
-                    class_="status-modal-content",
+                    class_="status-modal-content status-modal-result",
                 )
             elif state == "error":
                 return ui.div(
+                    ui.tags.style(".modal-loading-view { display: none !important; }"),
                     ui.div(
                         ui.HTML(
                             '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'
@@ -1281,9 +1265,9 @@ def create_server(settings, store):
                             Shiny.setInputValue('update_modal_closed', Math.random());
                         """,
                     ),
-                    class_="status-modal-content",
+                    class_="status-modal-content status-modal-result",
                 )
-            return ui.div()
+            return None
 
         @reactive.effect
         @reactive.event(input.submit_request)
@@ -1302,14 +1286,27 @@ def create_server(settings, store):
             submit_status.set({"state": "submitting"})
             ui.modal_show(
                 ui.modal(
-                    ui.output_ui("submit_modal_body"),
+                    ui.div(
+                        ui.div(
+                            ui.div(class_="status-modal-spinner"),
+                            ui.div("Submitting Request...", class_="status-modal-title"),
+                            ui.div(
+                                "Please wait while your request is being logged and assigned.",
+                                class_="status-modal-subtitle",
+                            ),
+                            class_="status-modal-content modal-loading-view",
+                            id="submit_modal_loading_view",
+                        ),
+                        ui.output_ui("submit_modal_body"),
+                        class_="status-modal-wrapper",
+                    ),
                     title=None,
                     footer=None,
                     easy_close=False,
                     size="m",
                 )
             )
-            await asyncio.sleep(0.4)
+            await asyncio.sleep(0.6)
 
             data = requests()
             next_id = "REQ000001"
@@ -1353,6 +1350,7 @@ def create_server(settings, store):
         @reactive.event(input.submit_modal_closed)
         def on_submit_modal_closed():
             ui.modal_remove()
+            submit_status.set({"state": "idle"})
 
         @reactive.effect
         @reactive.event(input.save_update)
@@ -1369,14 +1367,27 @@ def create_server(settings, store):
             update_status.set({"state": "submitting", "request_id": request_id})
             ui.modal_show(
                 ui.modal(
-                    ui.output_ui("update_modal_body"),
+                    ui.div(
+                        ui.div(
+                            ui.div(class_="status-modal-spinner"),
+                            ui.div("Saving Update...", class_="status-modal-title"),
+                            ui.div(
+                                f"Please wait while request {request_id} is being updated.",
+                                class_="status-modal-subtitle",
+                            ),
+                            class_="status-modal-content modal-loading-view",
+                            id="update_modal_loading_view",
+                        ),
+                        ui.output_ui("update_modal_body"),
+                        class_="status-modal-wrapper",
+                    ),
                     title=None,
                     footer=None,
                     easy_close=False,
                     size="m",
                 )
             )
-            await asyncio.sleep(0.4)
+            await asyncio.sleep(0.6)
 
             author = input.developer_email().strip() or str(row.get("developer_email", "") or "")
             updates = {
@@ -1418,6 +1429,7 @@ def create_server(settings, store):
         @reactive.event(input.update_modal_closed)
         def on_update_modal_closed():
             ui.modal_remove()
+            update_status.set({"state": "idle"})
 
         def clear_manage_filters_action():
             ui.update_select("manage_filter_business_unit", selected=ALL_FILTER)
