@@ -127,6 +127,11 @@ class RequestStore:
         if hasattr(self.backend, "resume_polling"):
             self.backend.resume_polling()
 
+    def check_health_now(self) -> dict[str, str]:
+        if hasattr(self.backend, "check_health_now"):
+            return self.backend.check_health_now()
+        return self.cluster_health()
+
 
 class CsvStore:
     def __init__(self, path: Path):
@@ -225,12 +230,12 @@ class DatabricksSqlWarehouseStore:
         with self._status_lock:
             return dict(self._cluster_status)
 
-    def pause_polling(self) -> None:
+    def pause_polling(self, reason: str = "app is idle") -> None:
         with self._pause_lock:
             if not self._is_paused:
                 self._is_paused = True
                 self._resume_event.clear()
-                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [CLUSTER POLLING] Background health check paused (app is idle).", flush=True)
+                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [CLUSTER POLLING] Background health check paused ({reason}).", flush=True)
 
     def resume_polling(self) -> None:
         with self._pause_lock:
@@ -238,6 +243,76 @@ class DatabricksSqlWarehouseStore:
                 self._is_paused = False
                 self._resume_event.set()
                 print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [CLUSTER POLLING] Background health check resumed.", flush=True)
+
+    def _status_dict(self, name: str, state: str) -> dict[str, str]:
+        display_label = name or "Databricks compute"
+        if state == RUNNING_STATE:
+            return {
+                "state": state,
+                "cluster_name": name,
+                "message": f"'{display_label}' is running.",
+                "can_read": "true",
+                "is_offline": "false",
+            }
+        elif state in STARTING_STATES:
+            return {
+                "state": state,
+                "cluster_name": name,
+                "message": f"'{display_label}' is {state.lower()}...",
+                "can_read": "false",
+                "is_offline": "false",
+            }
+        elif state in STOPPING_STATES:
+            return {
+                "state": state,
+                "cluster_name": name,
+                "message": f"'{display_label}' is {state.lower()}...",
+                "can_read": "false",
+                "is_offline": "false",
+            }
+        elif state in OFFLINE_STATES:
+            return {
+                "state": state,
+                "cluster_name": name,
+                "message": f"'{display_label}' is {state.lower()}.",
+                "can_read": "false",
+                "is_offline": "true",
+            }
+        else:
+            is_off = state not in {"ERROR", "UNKNOWN"}
+            return {
+                "state": state,
+                "cluster_name": name,
+                "message": f"'{display_label}' status: {state}.",
+                "can_read": "false",
+                "is_offline": "true" if is_off else "false",
+            }
+
+    def check_health_now(self) -> dict[str, str]:
+        """Performs a direct single on-demand health check."""
+        try:
+            name, state = self._compute_info()
+            if name:
+                self._compute_name = name
+            new_status = self._status_dict(name, state)
+            display_label = name or "Databricks compute"
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [CLUSTER STATUS] '{display_label}' State: {state} | {new_status['message']}", flush=True)
+            with self._status_lock:
+                self._cluster_status = new_status
+            if state in OFFLINE_STATES:
+                self.pause_polling("cluster is offline")
+            return dict(new_status)
+        except Exception as exc:
+            new_status = {
+                "state": "ERROR",
+                "cluster_name": self._compute_name,
+                "message": f"{type(exc).__name__}: {str(exc)}",
+                "can_read": "false",
+                "is_offline": "false",
+            }
+            with self._status_lock:
+                self._cluster_status = new_status
+            return dict(new_status)
 
     def start_cluster(self) -> None:
         self.resume_polling()
@@ -262,47 +337,7 @@ class DatabricksSqlWarehouseStore:
                 if name:
                     self._compute_name = name
                 display_label = name or "Databricks compute"
-                if state == RUNNING_STATE:
-                    new_status = {
-                        "state": state,
-                        "cluster_name": name,
-                        "message": f"'{display_label}' is running.",
-                        "can_read": "true",
-                        "is_offline": "false",
-                    }
-                elif state in STARTING_STATES:
-                    new_status = {
-                        "state": state,
-                        "cluster_name": name,
-                        "message": f"'{display_label}' is {state.lower()}...",
-                        "can_read": "false",
-                        "is_offline": "false",
-                    }
-                elif state in STOPPING_STATES:
-                    new_status = {
-                        "state": state,
-                        "cluster_name": name,
-                        "message": f"'{display_label}' is {state.lower()}...",
-                        "can_read": "false",
-                        "is_offline": "false",
-                    }
-                elif state in OFFLINE_STATES:
-                    new_status = {
-                        "state": state,
-                        "cluster_name": name,
-                        "message": f"'{display_label}' is {state.lower()}.",
-                        "can_read": "false",
-                        "is_offline": "true",
-                    }
-                else:
-                    is_off = state not in {"ERROR", "UNKNOWN"}
-                    new_status = {
-                        "state": state,
-                        "cluster_name": name,
-                        "message": f"'{display_label}' status: {state}.",
-                        "can_read": "false",
-                        "is_offline": "true" if is_off else "false",
-                    }
+                new_status = self._status_dict(name, state)
                 print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [CLUSTER STATUS] '{display_label}' State: {state} | {new_status['message']}", flush=True)
             except Exception as exc:
                 import traceback
@@ -318,8 +353,12 @@ class DatabricksSqlWarehouseStore:
 
             with self._status_lock:
                 self._cluster_status = new_status
-                
-            for _ in range(30):
+
+            if new_status.get("state") in OFFLINE_STATES:
+                self.pause_polling("cluster is offline")
+                continue
+
+            for _ in range(60):
                 if not self._resume_event.is_set():
                     break
                 time.sleep(0.5)

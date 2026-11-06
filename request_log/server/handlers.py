@@ -85,8 +85,8 @@ def create_server(settings, store):
                 store.resume_polling()
                 is_app_inactive.set(False)
             if settings.storage_mode == "databricks":
-                with reactive.isolate():
-                    info = cluster_info()
+                info = store.check_health_now()
+                cluster_info.set(info)
                 state = info.get("state", "UNKNOWN")
                 is_offline = info.get("is_offline") == "true" or state in {"TERMINATED", "STOPPED", "OFFLINE"}
                 if is_offline:
@@ -94,7 +94,10 @@ def create_server(settings, store):
                     cluster_name = info.get("cluster_name", "")
                     cluster_modal_state.set("offline_prompt")
                     ui.modal_show(cluster_offline_modal(cluster_name=cluster_name, state=state))
-            refresh_count.set(refresh_count() + 1)
+                elif info.get("can_read") == "true":
+                    refresh_count.set(refresh_count() + 1)
+            else:
+                refresh_count.set(refresh_count() + 1)
 
         @reactive.effect
         def poll_cluster_health():
@@ -110,12 +113,7 @@ def create_server(settings, store):
 
                 state = health.get("state", "UNKNOWN")
                 is_offline = health.get("is_offline") == "true" or state in {"TERMINATED", "STOPPED", "OFFLINE"}
-
-                if state == "UNKNOWN":
-                    reactive.invalidate_later(1, session=session)
-                    return
-                else:
-                    reactive.invalidate_later(15, session=session)
+                is_starting = state in {"STARTING", "PENDING", "RESTARTING", "RESIZING"}
 
                 nonlocal previous_cluster_state
                 prev_state = previous_cluster_state
@@ -124,21 +122,10 @@ def create_server(settings, store):
                         offline_modal_dismissed.set(False)
                 previous_cluster_state = state
 
-                inactivity_timeout_seconds = int(os.environ.get("INACTIVITY_TIMEOUT_SECONDS", 30 * 60))
-                idle_seconds = time.time() - last_user_activity
-
                 with reactive.isolate():
                     modal_state = cluster_modal_state()
                     dismissed = offline_modal_dismissed()
                     has_loaded_data = data_loaded()
-
-                if is_offline and idle_seconds >= inactivity_timeout_seconds:
-                    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [SESSION TIMEOUT] 30m inactivity reached while cluster is offline. Session set to inactive. App is now idle.", flush=True)
-                    store.pause_polling()
-                    is_app_inactive.set(True)
-                    cluster_modal_state.set("inactive")
-                    ui.modal_show(session_inactive_modal())
-                    return
 
                 if health.get("can_read") == "true":
                     if modal_state in ("starting", "offline_prompt"):
@@ -148,12 +135,26 @@ def create_server(settings, store):
                         ui.notification_show("Databricks cluster is running! Loading data...", type="message", duration=5)
                     if not has_loaded_data:
                         refresh_count.set(refresh_count() + 1)
+                    # While RUNNING, check occasionally (every 30s) to detect if compute terminates from idle timeout
+                    reactive.invalidate_later(30, session=session)
+                elif is_starting:
+                    # While STARTING, check every 5 seconds until RUNNING
+                    reactive.invalidate_later(5, session=session)
                 elif is_offline:
+                    # Cluster is OFFLINE: show prompt modal if not dismissed
                     if not dismissed and modal_state == "none":
                         cluster_name = health.get("cluster_name", "")
                         print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [CLUSTER PROMPT] Cluster '{cluster_name}' is {state}. Displaying offline prompt modal to user.", flush=True)
                         cluster_modal_state.set("offline_prompt")
                         ui.modal_show(cluster_offline_modal(cluster_name=cluster_name, state=state))
+                    # STOP POLLING! The cluster is offline and will not auto-start.
+                    # App becomes completely idle. No reactive.invalidate_later!
+                    return
+                elif state == "UNKNOWN":
+                    # Initial check still in flight, retry in 1 second
+                    reactive.invalidate_later(1, session=session)
+                else:
+                    reactive.invalidate_later(15, session=session)
             except Exception as exc:
                 import traceback
                 traceback.print_exc()
@@ -174,6 +175,7 @@ def create_server(settings, store):
             try:
                 await asyncio.to_thread(store.start_cluster)
                 cluster_info.set(store.cluster_health())
+                reactive.invalidate_later(3, session=session)
             except Exception as exc:
                 import traceback
                 traceback.print_exc()
