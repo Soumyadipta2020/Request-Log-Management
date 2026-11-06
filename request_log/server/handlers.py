@@ -10,6 +10,13 @@ import plotly.express as px
 from shiny import Inputs, Outputs, Session, reactive, render, ui
 from shinywidgets import render_widget
 
+from cluster_manager import (
+    ClusterStartingError,
+    cluster_error_modal,
+    cluster_offline_modal,
+    cluster_starting_modal,
+    render_cluster_banner,
+)
 from request_log.assignments import assign_owner
 from request_log.constants import (
     ALL_FILTER,
@@ -26,11 +33,8 @@ from request_log.constants import (
     SVG_TOTAL,
 )
 from request_log.server.charts import empty_chart, get_integer_dtick, plot_template
-from request_log.storage import COLUMNS, ClusterStartingError, empty_requests, new_request
+from request_log.storage import COLUMNS, empty_requests, new_request
 from request_log.ui.components import (
-    cluster_error_modal,
-    cluster_offline_modal,
-    cluster_starting_modal,
     logout_confirmation_modal,
     metric_card,
     session_ended_modal,
@@ -482,39 +486,7 @@ def create_server(settings, store):
 
         @render.ui
         def cluster_banner():
-            info = cluster_info()
-            state = info.get("state", "LOCAL")
-            cluster_name = info.get("cluster_name", "")
-            message = info.get("message", "")
-            if settings.storage_mode != "databricks" or state == "RUNNING":
-                return None
-            banner_class = "ok" if info.get("can_read") == "true" else "warn"
-            is_offline = info.get("is_offline") == "true" or state in {"TERMINATED", "STOPPED", "OFFLINE"}
-            is_starting = state in {"PENDING", "RESTARTING", "RESIZING", "STARTING"}
-
-            action_btn = None
-            if is_offline:
-                action_btn = ui.input_action_button(
-                    "btn_banner_start_cluster",
-                    "Start Cluster",
-                    class_="btn-primary compact-btn",
-                    style="margin-left: auto;",
-                )
-            elif is_starting:
-                action_btn = ui.div(
-                    ui.tags.span(class_="spinner-border spinner-border-sm text-primary", role="status", style="width: 0.9rem; height: 0.9rem; margin-right: 6px;"),
-                    ui.tags.span("Starting..."),
-                    style="margin-left: auto; display: flex; align-items: center; font-size: 0.85rem; font-weight: 700; color: var(--bg-blue);",
-                )
-
-            display_state_label = f"{cluster_name}: {state}" if cluster_name else f"Cluster {state}"
-
-            return ui.div(
-                ui.tags.span(display_state_label, class_="health-state"),
-                ui.tags.span(message),
-                action_btn,
-                class_=f"health-banner {banner_class}",
-            )
+            return render_cluster_banner(cluster_info(), storage_mode=settings.storage_mode)
 
         @render.ui
         def header_user_badge():
