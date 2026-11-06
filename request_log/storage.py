@@ -191,6 +191,8 @@ class DatabricksSqlWarehouseStore:
         self._pause_lock = threading.Lock()
         self._resume_event = threading.Event()
         self._resume_event.set()
+        self._startup_in_progress = False
+        self._startup_requested_at = 0.0
 
     def read_requests(self) -> pd.DataFrame:
         self._ensure_table()
@@ -315,6 +317,8 @@ class DatabricksSqlWarehouseStore:
             return dict(new_status)
 
     def start_cluster(self) -> None:
+        self._startup_in_progress = True
+        self._startup_requested_at = time.time()
         self.resume_polling()
         target_name = self._compute_name or "compute"
         target_id = self.settings.databricks_cluster_id or self.settings.databricks_warehouse_id or "compute"
@@ -337,6 +341,19 @@ class DatabricksSqlWarehouseStore:
                 if name:
                     self._compute_name = name
                 display_label = name or "Databricks compute"
+
+                # Check if startup is in progress:
+                elapsed_since_start = time.time() - self._startup_requested_at
+                if self._startup_in_progress:
+                    if state == RUNNING_STATE:
+                        self._startup_in_progress = False
+                    elif state in OFFLINE_STATES and elapsed_since_start < 45:
+                        # Databricks takes 5-20s after API call to update state from STOPPED to STARTING.
+                        # Preserve STARTING state during this transition window!
+                        state = "STARTING"
+                    elif elapsed_since_start >= 300:
+                        self._startup_in_progress = False
+
                 new_status = self._status_dict(name, state)
                 print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [CLUSTER STATUS] '{display_label}' State: {state} | {new_status['message']}", flush=True)
             except Exception as exc:
@@ -354,11 +371,12 @@ class DatabricksSqlWarehouseStore:
             with self._status_lock:
                 self._cluster_status = new_status
 
-            if new_status.get("state") in OFFLINE_STATES:
+            if new_status.get("state") in OFFLINE_STATES and not self._startup_in_progress:
                 self.pause_polling("cluster is offline")
                 continue
 
-            for _ in range(60):
+            sleep_duration = 5 if self._startup_in_progress or new_status.get("state") in STARTING_STATES else 30
+            for _ in range(int(sleep_duration / 0.5)):
                 if not self._resume_event.is_set():
                     break
                 time.sleep(0.5)

@@ -127,12 +127,24 @@ def create_server(settings, store):
                     dismissed = offline_modal_dismissed()
                     has_loaded_data = data_loaded()
 
-                if health.get("can_read") == "true":
-                    if modal_state in ("starting", "offline_prompt"):
+                # If user is waiting on the startup modal, actively poll until RUNNING:
+                if modal_state == "starting":
+                    if health.get("can_read") == "true":
                         print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [CLUSTER READY] Cluster is now RUNNING. Auto-closing modals and loading data.", flush=True)
                         cluster_modal_state.set("none")
                         ui.modal_remove()
                         ui.notification_show("Databricks cluster is running! Loading data...", type="message", duration=5)
+                        if not has_loaded_data:
+                            refresh_count.set(refresh_count() + 1)
+                        reactive.invalidate_later(30, session=session)
+                    else:
+                        reactive.invalidate_later(5, session=session)
+                    return
+
+                if health.get("can_read") == "true":
+                    if modal_state == "offline_prompt":
+                        cluster_modal_state.set("none")
+                        ui.modal_remove()
                     if not has_loaded_data:
                         refresh_count.set(refresh_count() + 1)
                     # While RUNNING, check occasionally (every 30s) to detect if compute terminates from idle timeout
