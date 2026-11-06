@@ -66,6 +66,10 @@ def create_server(settings, store):
         is_app_inactive = reactive.value(False)
         cluster_modal_state = reactive.value("none")
         offline_modal_dismissed = reactive.value(False)
+        cluster_poll_trigger = reactive.value(0)
+
+        def trigger_cluster_poll():
+            cluster_poll_trigger.set(cluster_poll_trigger() + 1)
 
         @reactive.effect
         @reactive.event(input.user_activity_ping, ignore_none=True, ignore_init=True)
@@ -101,6 +105,7 @@ def create_server(settings, store):
 
         @reactive.effect
         def poll_cluster_health():
+            cluster_poll_trigger()
             if settings.storage_mode != "databricks":
                 return
 
@@ -127,31 +132,28 @@ def create_server(settings, store):
                     dismissed = offline_modal_dismissed()
                     has_loaded_data = data_loaded()
 
-                # If user is waiting on the startup modal, actively poll until RUNNING:
-                if modal_state == "starting":
-                    if health.get("can_read") == "true":
-                        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [CLUSTER READY] Cluster is now RUNNING. Auto-closing modals and loading data.", flush=True)
+                # If cluster is RUNNING (can_read == "true"):
+                if health.get("can_read") == "true":
+                    if modal_state in {"starting", "offline_prompt"}:
+                        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [CLUSTER READY] Poller detected RUNNING compute. Auto-closing modals and loading data.", flush=True)
                         cluster_modal_state.set("none")
                         ui.modal_remove()
                         ui.notification_show("Databricks cluster is running! Loading data...", type="message", duration=5)
-                        if not has_loaded_data:
-                            refresh_count.set(refresh_count() + 1)
-                        reactive.invalidate_later(30, session=session)
-                    else:
-                        reactive.invalidate_later(5, session=session)
-                    return
-
-                if health.get("can_read") == "true":
-                    if modal_state == "offline_prompt":
-                        cluster_modal_state.set("none")
-                        ui.modal_remove()
                     if not has_loaded_data:
                         refresh_count.set(refresh_count() + 1)
                     # While RUNNING, check occasionally (every 30s) to detect if compute terminates from idle timeout
-                    reactive.invalidate_later(30, session=session)
-                elif is_starting:
-                    # While STARTING, check every 5 seconds until RUNNING
-                    reactive.invalidate_later(5, session=session)
+                    reactive.invalidate_later(30)
+                    return
+
+                if modal_state == "starting":
+                    # The active foreground loop in on_start_cluster_confirmed is polling every 2s.
+                    # Schedule a backup check in 5s:
+                    reactive.invalidate_later(5)
+                    return
+
+                if is_starting:
+                    # While STARTING (e.g. user clicked Wait in Background), check every 3 seconds until RUNNING
+                    reactive.invalidate_later(3)
                 elif is_offline:
                     # Cluster is OFFLINE: show prompt modal if not dismissed
                     if not dismissed and modal_state == "none":
@@ -163,16 +165,16 @@ def create_server(settings, store):
                     # App becomes completely idle. No reactive.invalidate_later!
                     return
                 elif state == "UNKNOWN":
-                    # Initial check still in flight, retry in 1 second
-                    reactive.invalidate_later(1, session=session)
+                    # Initial check still in flight, retry in 2 seconds
+                    reactive.invalidate_later(2)
                 else:
-                    reactive.invalidate_later(15, session=session)
+                    reactive.invalidate_later(15)
             except Exception as exc:
                 import traceback
                 traceback.print_exc()
                 error_msg = f"{type(exc).__name__}: {str(exc)}"
                 cluster_info.set({"state": "ERROR", "cluster_name": "", "message": error_msg, "can_read": "false", "is_offline": "false"})
-                reactive.invalidate_later(15, session=session)
+                reactive.invalidate_later(15)
 
         @reactive.effect
         @reactive.event(input.btn_start_cluster_confirm)
@@ -187,7 +189,42 @@ def create_server(settings, store):
             try:
                 await asyncio.to_thread(store.start_cluster)
                 cluster_info.set(store.cluster_health())
-                reactive.invalidate_later(3, session=session)
+                trigger_cluster_poll()
+
+                # Actively wait for compute to become ready in the foreground:
+                start_time = time.time()
+                while time.time() - start_time < 300:  # 5 minutes max
+                    await asyncio.sleep(2)
+                    with reactive.isolate():
+                        current_modal = cluster_modal_state()
+                    if current_modal != "starting":
+                        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [CLUSTER STARTUP] Modal closed or changed by user. Exiting foreground wait.", flush=True)
+                        break
+
+                    health = await asyncio.to_thread(store.check_health_now)
+                    cluster_info.set(health)
+                    state = health.get("state", "UNKNOWN")
+                    can_read = health.get("can_read") == "true"
+
+                    if can_read or state == "RUNNING":
+                        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [CLUSTER READY] Cluster '{cluster_name}' is now RUNNING! Auto-closing modal and loading data.", flush=True)
+                        cluster_modal_state.set("none")
+                        ui.modal_remove()
+                        ui.notification_show(
+                            f"Databricks compute '{cluster_name or 'Warehouse'}' is ready! Loading data...",
+                            type="message",
+                            duration=5,
+                        )
+                        refresh_count.set(refresh_count() + 1)
+                        trigger_cluster_poll()
+                        return
+
+                if time.time() - start_time >= 300:
+                    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [CLUSTER TIMEOUT] Startup wait timed out after 5 minutes.", flush=True)
+                    cluster_modal_state.set("none")
+                    ui.modal_remove()
+                    ui.notification_show("Cluster startup is taking longer than expected. Please check Databricks console.", type="warning", duration=8)
+
             except Exception as exc:
                 import traceback
                 traceback.print_exc()
@@ -210,6 +247,7 @@ def create_server(settings, store):
             last_user_activity = time.time()
             cluster_modal_state.set("none")
             ui.modal_remove()
+            trigger_cluster_poll()
 
         @reactive.effect
         @reactive.event(input.btn_banner_start_cluster)
@@ -223,6 +261,7 @@ def create_server(settings, store):
             cluster_name = info.get("cluster_name", "")
             cluster_modal_state.set("offline_prompt")
             ui.modal_show(cluster_offline_modal(cluster_name=cluster_name, state=state))
+            trigger_cluster_poll()
 
         @reactive.effect
         @reactive.event(input.btn_resume_session)
@@ -282,7 +321,7 @@ def create_server(settings, store):
             store.pause_polling()
 
         @reactive.effect
-        def load_requests():
+        async def load_requests():
             refresh_count()
             try:
                 health = store.cluster_health()
@@ -291,7 +330,7 @@ def create_server(settings, store):
                     data_error.set(health.get("message", "Databricks cluster is not ready."))
                     return
                 print("[DEBUG] Calling store.read_requests()...", flush=True)
-                data = store.read_requests()
+                data = await asyncio.to_thread(store.read_requests)
                 print(f"[DEBUG] read_requests returned {len(data)} rows.", flush=True)
                 request_data.set(data)
                 data_loaded.set(True)

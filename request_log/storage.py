@@ -296,12 +296,22 @@ class DatabricksSqlWarehouseStore:
             name, state = self._compute_info()
             if name:
                 self._compute_name = name
+
+            elapsed_since_start = time.time() - self._startup_requested_at
+            if self._startup_in_progress:
+                if state == RUNNING_STATE:
+                    self._startup_in_progress = False
+                elif state in OFFLINE_STATES and elapsed_since_start < 45:
+                    state = "STARTING"
+                elif elapsed_since_start >= 300:
+                    self._startup_in_progress = False
+
             new_status = self._status_dict(name, state)
             display_label = name or "Databricks compute"
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [CLUSTER STATUS] '{display_label}' State: {state} | {new_status['message']}", flush=True)
             with self._status_lock:
                 self._cluster_status = new_status
-            if state in OFFLINE_STATES:
+            if state in OFFLINE_STATES and not self._startup_in_progress:
                 self.pause_polling("cluster is offline")
             return dict(new_status)
         except Exception as exc:
