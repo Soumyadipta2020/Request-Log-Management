@@ -31,10 +31,27 @@ from request_log.ui.components import (
     cluster_error_modal,
     cluster_offline_modal,
     cluster_starting_modal,
+    logout_confirmation_modal,
     metric_card,
+    session_ended_modal,
     session_inactive_modal,
     sidebar_link,
 )
+
+
+def get_current_user(session: Session) -> str:
+    """Extracts logged in user email or username from Databricks Apps reverse proxy headers or session."""
+    http_conn = getattr(session, "http_conn", None)
+    if http_conn and hasattr(http_conn, "headers"):
+        headers = http_conn.headers
+        for key in ("x-forwarded-email", "x-forwarded-preferred-username", "x-forwarded-user"):
+            val = headers.get(key)
+            if val and str(val).strip():
+                return str(val).strip()
+    user = getattr(session, "user", None)
+    if user and str(user).strip():
+        return str(user).strip()
+    return ""
 
 
 def create_server(settings, store):
@@ -215,6 +232,31 @@ def create_server(settings, store):
                         refresh_count.set(refresh_count() + 1)
                 except Exception:
                     pass
+
+        @reactive.effect
+        @reactive.event(input.btn_logout_session)
+        def on_click_logout_session():
+            user_email = get_current_user(session)
+            host = settings.databricks_host or os.getenv("DATABRICKS_HOST", "")
+            cluster_modal_state.set("logout_prompt")
+            ui.modal_show(logout_confirmation_modal(user_email=user_email, databricks_host=host))
+
+        @reactive.effect
+        @reactive.event(input.btn_confirm_end_session)
+        def on_confirm_end_session():
+            nonlocal last_user_activity
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [SESSION ENDED] User manually ended their session.", flush=True)
+            is_app_inactive.set(True)
+            last_user_activity = time.time()
+            cluster_modal_state.set("session_ended")
+            host = settings.databricks_host or os.getenv("DATABRICKS_HOST", "")
+            ui.modal_show(session_ended_modal(databricks_host=host))
+
+        @reactive.effect
+        @reactive.event(input.btn_dismiss_logout_modal)
+        def on_dismiss_logout_modal():
+            cluster_modal_state.set("none")
+            ui.modal_remove()
 
         @reactive.effect
         def load_requests():
@@ -409,6 +451,23 @@ def create_server(settings, store):
                 ui.tags.span(message),
                 action_btn,
                 class_=f"health-banner {banner_class}",
+            )
+
+        @render.ui
+        def header_user_badge():
+            user_email = get_current_user(session)
+            if not user_email:
+                return None
+            return ui.div(
+                ui.HTML('''
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--muted); margin-right: 4px; vertical-align: -1px;">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                '''),
+                ui.span(user_email),
+                class_="user-header-badge",
+                title=f"Signed in as {user_email}",
             )
 
         @render.ui

@@ -64,6 +64,19 @@ def create_app_ui(settings):
                     ),
                     ui.div(
                         ui.input_action_button("refresh", "Refresh", class_="btn-outline-secondary compact-btn"),
+                        ui.output_ui("header_user_badge"),
+                        ui.input_action_button(
+                            "btn_logout_session",
+                            ui.HTML('''
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px; vertical-align: -2px;">
+                                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                                    <polyline points="16 17 21 12 16 7"></polyline>
+                                    <line x1="21" y1="12" x2="9" y2="12"></line>
+                                </svg>
+                                <span>Log out or end your session</span>
+                            '''),
+                            class_="btn-outline-secondary compact-btn logout-header-btn",
+                        ),
                         class_="header-actions",
                     ),
                     class_="topbar",
