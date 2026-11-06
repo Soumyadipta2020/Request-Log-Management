@@ -119,6 +119,14 @@ class RequestStore:
         if hasattr(self.backend, "start_cluster"):
             self.backend.start_cluster()
 
+    def pause_polling(self) -> None:
+        if hasattr(self.backend, "pause_polling"):
+            self.backend.pause_polling()
+
+    def resume_polling(self) -> None:
+        if hasattr(self.backend, "resume_polling"):
+            self.backend.resume_polling()
+
 
 class CsvStore:
     def __init__(self, path: Path):
@@ -174,6 +182,10 @@ class DatabricksSqlWarehouseStore:
         }
         self._bg_thread_started = False
         self._bg_lock = threading.Lock()
+        self._is_paused = False
+        self._pause_lock = threading.Lock()
+        self._resume_event = threading.Event()
+        self._resume_event.set()
 
     def read_requests(self) -> pd.DataFrame:
         self._ensure_table()
@@ -213,7 +225,22 @@ class DatabricksSqlWarehouseStore:
         with self._status_lock:
             return dict(self._cluster_status)
 
+    def pause_polling(self) -> None:
+        with self._pause_lock:
+            if not self._is_paused:
+                self._is_paused = True
+                self._resume_event.clear()
+                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [CLUSTER POLLING] Background health check paused (app is idle).", flush=True)
+
+    def resume_polling(self) -> None:
+        with self._pause_lock:
+            if self._is_paused:
+                self._is_paused = False
+                self._resume_event.set()
+                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [CLUSTER POLLING] Background health check resumed.", flush=True)
+
     def start_cluster(self) -> None:
+        self.resume_polling()
         target_name = self._compute_name or "compute"
         target_id = self.settings.databricks_cluster_id or self.settings.databricks_warehouse_id or "compute"
         print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [CLUSTER ACTION] Starting Databricks compute: '{target_name}' ({target_id})...", flush=True)
@@ -229,6 +256,7 @@ class DatabricksSqlWarehouseStore:
 
     def _status_polling_loop(self) -> None:
         while True:
+            self._resume_event.wait()
             try:
                 name, state = self._compute_info()
                 if name:
@@ -291,7 +319,10 @@ class DatabricksSqlWarehouseStore:
             with self._status_lock:
                 self._cluster_status = new_status
                 
-            time.sleep(15)
+            for _ in range(30):
+                if not self._resume_event.is_set():
+                    break
+                time.sleep(0.5)
 
     def _get_cursor(self):
         with self._status_lock:

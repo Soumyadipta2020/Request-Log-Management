@@ -81,6 +81,9 @@ def create_server(settings, store):
         def refresh_data():
             nonlocal last_user_activity
             last_user_activity = time.time()
+            if is_app_inactive():
+                store.resume_polling()
+                is_app_inactive.set(False)
             if settings.storage_mode == "databricks":
                 with reactive.isolate():
                     info = cluster_info()
@@ -98,10 +101,8 @@ def create_server(settings, store):
             if settings.storage_mode != "databricks":
                 return
 
-            with reactive.isolate():
-                if is_app_inactive():
-                    reactive.invalidate_later(15, session=session)
-                    return
+            if is_app_inactive():
+                return
 
             try:
                 health = store.cluster_health()
@@ -132,7 +133,8 @@ def create_server(settings, store):
                     has_loaded_data = data_loaded()
 
                 if is_offline and idle_seconds >= inactivity_timeout_seconds:
-                    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [SESSION TIMEOUT] 30m inactivity reached while cluster is offline. Session set to inactive.", flush=True)
+                    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [SESSION TIMEOUT] 30m inactivity reached while cluster is offline. Session set to inactive. App is now idle.", flush=True)
+                    store.pause_polling()
                     is_app_inactive.set(True)
                     cluster_modal_state.set("inactive")
                     ui.modal_show(session_inactive_modal())
@@ -212,7 +214,8 @@ def create_server(settings, store):
         @reactive.event(input.btn_resume_session)
         def on_resume_session():
             nonlocal last_user_activity
-            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [SESSION RESUME] User clicked Resume Session. Reactivating session.", flush=True)
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [SESSION RESUME] User clicked Resume Session. Reactivating session and resuming polling.", flush=True)
+            store.resume_polling()
             is_app_inactive.set(False)
             last_user_activity = time.time()
             offline_modal_dismissed.set(False)
@@ -245,7 +248,8 @@ def create_server(settings, store):
         @reactive.event(input.btn_confirm_end_session)
         def on_confirm_end_session():
             nonlocal last_user_activity
-            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [SESSION ENDED] User manually ended their session.", flush=True)
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [SESSION ENDED] User manually ended their session. App is now idle.", flush=True)
+            store.pause_polling()
             is_app_inactive.set(True)
             last_user_activity = time.time()
             cluster_modal_state.set("session_ended")
@@ -257,6 +261,11 @@ def create_server(settings, store):
         def on_dismiss_logout_modal():
             cluster_modal_state.set("none")
             ui.modal_remove()
+
+        @session.on_ended
+        def on_session_ended():
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [SESSION CLOSED] Client disconnected. App is now idle.", flush=True)
+            store.pause_polling()
 
         @reactive.effect
         def load_requests():
