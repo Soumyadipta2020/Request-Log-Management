@@ -113,7 +113,7 @@ class RequestStore:
     def cluster_health(self) -> dict[str, str]:
         if hasattr(self.backend, "cluster_health"):
             return self.backend.cluster_health()
-        return {"state": "LOCAL", "message": "Using local CSV storage.", "can_read": "true", "is_offline": "false"}
+        return {"state": "LOCAL", "cluster_name": "Local Storage", "message": "Using local CSV storage.", "can_read": "true", "is_offline": "false"}
 
     def start_cluster(self) -> None:
         if hasattr(self.backend, "start_cluster"):
@@ -164,7 +164,14 @@ class DatabricksSqlWarehouseStore:
         self._validate_identifier(settings.uc_table)
 
         self._status_lock = threading.Lock()
-        self._cluster_status = {"state": "UNKNOWN", "message": "Checking cluster health...", "can_read": "false", "is_offline": "false"}
+        self._compute_name = ""
+        self._cluster_status = {
+            "state": "UNKNOWN",
+            "cluster_name": "",
+            "message": "Checking compute status...",
+            "can_read": "false",
+            "is_offline": "false",
+        }
         self._bg_thread_started = False
         self._bg_lock = threading.Lock()
 
@@ -207,11 +214,15 @@ class DatabricksSqlWarehouseStore:
             return dict(self._cluster_status)
 
     def start_cluster(self) -> None:
+        target_name = self._compute_name or "compute"
+        target_id = self.settings.databricks_cluster_id or self.settings.databricks_warehouse_id or "compute"
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [CLUSTER ACTION] Starting Databricks compute: '{target_name}' ({target_id})...", flush=True)
         self._start_compute()
         with self._status_lock:
             self._cluster_status = {
                 "state": "STARTING",
-                "message": "Compute startup has been initiated. Waiting for cluster to be ready...",
+                "cluster_name": self._compute_name,
+                "message": f"Startup for '{target_name}' has been initiated. Waiting for cluster to be ready...",
                 "can_read": "false",
                 "is_offline": "false",
             }
@@ -219,32 +230,39 @@ class DatabricksSqlWarehouseStore:
     def _status_polling_loop(self) -> None:
         while True:
             try:
-                state = self._warehouse_state()
+                name, state = self._compute_info()
+                if name:
+                    self._compute_name = name
+                display_label = name or "Databricks compute"
                 if state == RUNNING_STATE:
                     new_status = {
                         "state": state,
-                        "message": "Databricks compute is running.",
+                        "cluster_name": name,
+                        "message": f"'{display_label}' is running.",
                         "can_read": "true",
                         "is_offline": "false",
                     }
                 elif state in STARTING_STATES:
                     new_status = {
                         "state": state,
-                        "message": f"Databricks compute is {state.lower()}...",
+                        "cluster_name": name,
+                        "message": f"'{display_label}' is {state.lower()}...",
                         "can_read": "false",
                         "is_offline": "false",
                     }
                 elif state in STOPPING_STATES:
                     new_status = {
                         "state": state,
-                        "message": f"Databricks compute is {state.lower()}...",
+                        "cluster_name": name,
+                        "message": f"'{display_label}' is {state.lower()}...",
                         "can_read": "false",
                         "is_offline": "false",
                     }
                 elif state in OFFLINE_STATES:
                     new_status = {
                         "state": state,
-                        "message": f"Databricks compute is {state.lower()}.",
+                        "cluster_name": name,
+                        "message": f"'{display_label}' is {state.lower()}.",
                         "can_read": "false",
                         "is_offline": "true",
                     }
@@ -252,19 +270,23 @@ class DatabricksSqlWarehouseStore:
                     is_off = state not in {"ERROR", "UNKNOWN"}
                     new_status = {
                         "state": state,
-                        "message": f"Databricks compute status: {state}.",
+                        "cluster_name": name,
+                        "message": f"'{display_label}' status: {state}.",
                         "can_read": "false",
                         "is_offline": "true" if is_off else "false",
                     }
+                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [CLUSTER STATUS] '{display_label}' State: {state} | {new_status['message']}", flush=True)
             except Exception as exc:
                 import traceback
                 traceback.print_exc()
                 new_status = {
                     "state": "ERROR",
+                    "cluster_name": self._compute_name,
                     "message": f"{type(exc).__name__}: {str(exc)}",
                     "can_read": "false",
                     "is_offline": "false",
                 }
+                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [CLUSTER ERROR] {type(exc).__name__}: {str(exc)}", flush=True)
 
             with self._status_lock:
                 self._cluster_status = new_status
@@ -338,16 +360,25 @@ class DatabricksSqlWarehouseStore:
             kwargs["token"] = self.settings.databricks_token
         return WorkspaceClient(**kwargs)
 
-    def _warehouse_state(self) -> str:
+    def _compute_info(self) -> tuple[str, str]:
+        """Queries Databricks API and returns (cluster_or_warehouse_name, state)."""
         client = self._workspace_client()
         if self.settings.databricks_cluster_id:
             cluster = client.clusters.get(self.settings.databricks_cluster_id)
-            return getattr(cluster.state, "value", str(cluster.state)).upper()
-            
+            state = getattr(cluster.state, "value", str(cluster.state)).upper()
+            name = getattr(cluster, "cluster_name", None) or getattr(cluster, "name", "")
+            return (str(name) if name else self._compute_name), state
+
         if not self.settings.databricks_warehouse_id:
             raise RuntimeError("DATABRICKS_WAREHOUSE_ID or DATABRICKS_CLUSTER_ID is required for Databricks SQL storage.")
         warehouse = client.warehouses.get(self.settings.databricks_warehouse_id)
-        return getattr(warehouse.state, "value", str(warehouse.state)).upper()
+        state = getattr(warehouse.state, "value", str(warehouse.state)).upper()
+        name = getattr(warehouse, "name", "")
+        return (str(name) if name else self._compute_name), state
+
+    def _warehouse_state(self) -> str:
+        _, state = self._compute_info()
+        return state
 
     def _start_compute(self) -> None:
         client = self._workspace_client()

@@ -32,8 +32,26 @@ def sidebar_link(input_id: str, label: str, active: bool = False) -> ui.Tag:
     return ui.input_action_link(input_id, label, class_=f"side-item{state}")
 
 
-def cluster_offline_modal(cluster_target: str, state: str) -> ui.Tag:
-    display_target = cluster_target if cluster_target else "Databricks Compute"
+def cluster_offline_modal(cluster_name: str = "", state: str = "OFFLINE") -> ui.Tag:
+    display_state = state if state else "OFFLINE"
+    has_name = bool(cluster_name and cluster_name.strip())
+    
+    if has_name:
+        subtitle_text = f"The compute cluster '{cluster_name}' is currently {display_state.lower()}. Would you like to start the cluster to load data and use the app?"
+    else:
+        subtitle_text = f"The compute cluster is currently {display_state.lower()}. Would you like to start the cluster to load data and use the app?"
+
+    badge_items = []
+    if has_name:
+        badge_items.extend([
+            ui.div("CLUSTER NAME", class_="status-modal-id-label"),
+            ui.div(cluster_name, class_="status-modal-id-value", style="color: #1a202c; font-size: 1.15rem; font-weight: 600; margin-bottom: 10px; word-break: break-word;"),
+        ])
+    badge_items.extend([
+        ui.div("COMPUTE STATUS", class_="status-modal-id-label"),
+        ui.div(display_state.upper(), class_="status-modal-id-value", style="color: #e07000; font-size: 1.25rem; font-weight: 700;"),
+    ])
+
     return ui.modal(
         ui.div(
             ui.div(
@@ -49,23 +67,12 @@ def cluster_offline_modal(cluster_target: str, state: str) -> ui.Tag:
                     class_="status-modal-icon-circle cluster-offline",
                 ),
                 ui.div("Databricks Cluster is Offline", class_="status-modal-title"),
-                ui.div(
-                    f"The compute cluster is currently {state.lower()}. Would you like to start the cluster to load data and use the app?",
-                    class_="status-modal-subtitle",
-                ),
+                ui.div(subtitle_text, class_="status-modal-subtitle"),
                 ui.div(
                     ui.div(
-                        ui.div("COMPUTE STATUS", class_="status-modal-id-label"),
-                        ui.div(state.upper(), class_="status-modal-id-value", style="color: #e07000; font-size: 1.35rem;"),
-                        ui.div(
-                            ui.div(
-                                ui.tags.span("Target:"),
-                                ui.tags.strong(display_target),
-                                class_="status-modal-detail-row",
-                            ),
-                            class_="status-modal-details",
-                        ),
+                        *badge_items,
                         class_="status-modal-badge-card",
+                        style="padding: 14px 20px; margin-bottom: 20px; text-align: center;",
                     ),
                     style="width: 100%; display: flex; justify-content: center;",
                 ),
@@ -95,12 +102,13 @@ def cluster_offline_modal(cluster_target: str, state: str) -> ui.Tag:
     )
 
 
-def cluster_starting_modal(cluster_target: str = "") -> ui.Tag:
+def cluster_starting_modal(cluster_name: str = "") -> ui.Tag:
+    target_text = f" '{cluster_name}'" if cluster_name and cluster_name.strip() else ""
     return ui.modal(
         ui.div(
             ui.div(
                 ui.div(class_="status-modal-spinner"),
-                ui.div("Starting Databricks Cluster...", class_="status-modal-title"),
+                ui.div(f"Starting Databricks Cluster{target_text}...", class_="status-modal-title"),
                 ui.div(
                     "Startup has been requested in Databricks. It usually takes 2 to 4 minutes for compute to become ready. The app will automatically connect and load data once online.",
                     class_="status-modal-subtitle",
