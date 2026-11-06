@@ -30,16 +30,17 @@ COLUMNS = [
 
 DATE_COLUMNS = ["log_date", "expected_end_date"]
 DEFAULT_STATUSES = ["Pending", "In Progress", "Hold", "Completed", "Cancelled"]
-STARTING_STATES = {"PENDING", "RESTARTING", "RESIZING", "STARTING"}
-STOPPING_STATES = {"TERMINATING", "STOPPING", "DELETING"}
-OFFLINE_STATES = {"TERMINATED", "STOPPED", "OFFLINE"}
-RUNNING_STATE = "RUNNING"
 
-
-class ClusterStartingError(RuntimeError):
-    def __init__(self, state: str):
-        self.state = state
-        super().__init__(f"Databricks cluster is {state}; please start the cluster to load data.")
+from cluster_manager import (
+    ClusterManager,
+    ClusterStartingError,
+    ERROR_STATE,
+    OFFLINE_STATES,
+    RUNNING_STATE,
+    STARTING_STATES,
+    STOPPING_STATES,
+    UNKNOWN_STATE,
+)
 
 
 def empty_requests() -> pd.DataFrame:
@@ -100,6 +101,7 @@ class RequestStore:
             self.backend = DatabricksSqlWarehouseStore(settings)
         else:
             self.backend = CsvStore(settings.local_csv_path)
+        self.cluster_manager = getattr(self.backend, "cluster_manager", None)
 
     def read_requests(self) -> pd.DataFrame:
         return clean_requests(self.backend.read_requests())
@@ -175,19 +177,7 @@ class DatabricksSqlWarehouseStore:
         self._validate_identifier(settings.uc_catalog)
         self._validate_identifier(settings.uc_schema)
         self._validate_identifier(settings.uc_table)
-
-        self._status_lock = threading.Lock()
-        self._compute_name = ""
-        self._cluster_status = {
-            "state": "UNKNOWN",
-            "cluster_name": "",
-            "message": "Checking compute status...",
-            "can_read": "false",
-            "is_offline": "false",
-        }
-        self._last_status_check = 0.0
-        self._startup_in_progress = False
-        self._startup_requested_at = 0.0
+        self.cluster_manager = ClusterManager(settings)
 
     def read_requests(self) -> pd.DataFrame:
         self._ensure_table()
@@ -219,214 +209,22 @@ class DatabricksSqlWarehouseStore:
             cursor.execute(f"UPDATE {self._table_name()} SET {set_clause} WHERE request_id = {self._sql_literal(request_id)}")
 
     def cluster_health(self, force_refresh: bool = False) -> dict[str, str]:
-        now = time.time()
-        with self._status_lock:
-            cached = dict(self._cluster_status)
-            last_check = getattr(self, "_last_status_check", 0.0)
-            state = cached.get("state", "UNKNOWN")
-
-        # Rate limit checks to once every 6 seconds to prevent duplicate queries:
-        if not force_refresh and state != "UNKNOWN" and (now - last_check) < 6.0:
-            return cached
-
-        return self.check_health_now()
-
-    def pause_polling(self, reason: str = "app is idle") -> None:
-        pass
-
-    def resume_polling(self) -> None:
-        pass
-
-    def _status_dict(self, name: str, state: str) -> dict[str, str]:
-        display_label = name or "Databricks compute"
-        if state == RUNNING_STATE:
-            return {
-                "state": state,
-                "cluster_name": name,
-                "message": f"'{display_label}' is running.",
-                "can_read": "true",
-                "is_offline": "false",
-            }
-        elif state in STARTING_STATES:
-            return {
-                "state": state,
-                "cluster_name": name,
-                "message": f"'{display_label}' is {state.lower()}...",
-                "can_read": "false",
-                "is_offline": "false",
-            }
-        elif state in STOPPING_STATES:
-            return {
-                "state": state,
-                "cluster_name": name,
-                "message": f"'{display_label}' is {state.lower()}...",
-                "can_read": "false",
-                "is_offline": "false",
-            }
-        elif state in OFFLINE_STATES:
-            return {
-                "state": state,
-                "cluster_name": name,
-                "message": f"'{display_label}' is {state.lower()}.",
-                "can_read": "false",
-                "is_offline": "true",
-            }
-        else:
-            is_off = state not in {"ERROR", "UNKNOWN"}
-            return {
-                "state": state,
-                "cluster_name": name,
-                "message": f"'{display_label}' status: {state}.",
-                "can_read": "false",
-                "is_offline": "true" if is_off else "false",
-            }
+        return self.cluster_manager.cluster_health(force_refresh=force_refresh)
 
     def check_health_now(self) -> dict[str, str]:
-        """Performs a direct single on-demand health check."""
-        try:
-            name, state = self._compute_info()
-            if name:
-                self._compute_name = name
-
-            elapsed_since_start = time.time() - self._startup_requested_at
-            if self._startup_in_progress:
-                if state == RUNNING_STATE:
-                    self._startup_in_progress = False
-                elif state in OFFLINE_STATES and elapsed_since_start < 45:
-                    state = "STARTING"
-                elif elapsed_since_start >= 300:
-                    self._startup_in_progress = False
-
-            new_status = self._status_dict(name, state)
-            display_label = name or "Databricks compute"
-            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [CLUSTER STATUS] '{display_label}' State: {state} | {new_status['message']}", flush=True)
-            with self._status_lock:
-                self._cluster_status = new_status
-                self._last_status_check = time.time()
-            return dict(new_status)
-        except Exception as exc:
-            new_status = {
-                "state": "ERROR",
-                "cluster_name": self._compute_name,
-                "message": f"{type(exc).__name__}: {str(exc)}",
-                "can_read": "false",
-                "is_offline": "false",
-            }
-            with self._status_lock:
-                self._cluster_status = new_status
-                self._last_status_check = time.time()
-            return dict(new_status)
+        return self.cluster_manager.check_health_now()
 
     def start_cluster(self) -> None:
-        self._startup_in_progress = True
-        self._startup_requested_at = time.time()
-        target_name = self._compute_name or "compute"
-        target_id = self.settings.databricks_cluster_id or self.settings.databricks_warehouse_id or "compute"
-        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [CLUSTER ACTION] Starting Databricks compute: '{target_name}' ({target_id})...", flush=True)
-        self._start_compute()
-        with self._status_lock:
-            self._cluster_status = {
-                "state": "STARTING",
-                "cluster_name": self._compute_name,
-                "message": f"Startup for '{target_name}' has been initiated. Waiting for cluster to be ready...",
-                "can_read": "false",
-                "is_offline": "false",
-            }
-            self._last_status_check = time.time()
+        self.cluster_manager.start_cluster()
+
+    def pause_polling(self, reason: str = "app is idle") -> None:
+        self.cluster_manager.pause_polling(reason=reason)
+
+    def resume_polling(self) -> None:
+        self.cluster_manager.resume_polling()
 
     def _get_cursor(self):
-        with self._status_lock:
-            cached_status = self._cluster_status
-        
-        state = cached_status.get("state", "UNKNOWN")
-        if state != RUNNING_STATE:
-            raise ClusterStartingError(state)
-
-        from databricks import sql
-
-        workspace_client = self._workspace_client()
-
-        if self.settings.databricks_cluster_id:
-            # Use an All-Purpose Cluster
-            cluster_id = self.settings.databricks_cluster_id
-            workspace_id = self.settings.databricks_workspace_id
-            
-            if not workspace_id:
-                # Try to extract workspace_id from the databricks host URL
-                host = self.settings.databricks_host.replace("https://", "")
-                if host.startswith("adb-"):
-                    workspace_id = host.split("-")[1].split(".")[0]
-                elif host.startswith("dbc-"):
-                    workspace_id = host.split("-")[1].split(".")[0]
-                else:
-                    workspace_id = "0"
-                    
-            http_path = f"/sql/protocolv1/o/{workspace_id}/{cluster_id}"
-        else:
-            # Use a Databricks SQL Warehouse
-            warehouse = workspace_client.warehouses.get(self.settings.databricks_warehouse_id)
-            http_path = warehouse.odbc_params.path
-
-        connect_kwargs = {
-            "server_hostname": workspace_client.config.host.replace("https://", ""),
-            "http_path": http_path,
-        }
-        
-        if self.settings.databricks_token:
-            connect_kwargs["access_token"] = self.settings.databricks_token
-        else:
-            connect_kwargs["credentials_provider"] = self._sql_credentials_provider(workspace_client.config)
-
-        connection = sql.connect(**connect_kwargs)
-        return connection.cursor()
-
-    @staticmethod
-    def _sql_credentials_provider(config):
-        credentials_provider = getattr(config, "credentials_provider", None)
-        if credentials_provider is not None:
-            return credentials_provider
-
-        authenticate = getattr(config, "authenticate", None)
-        if authenticate is None:
-            raise RuntimeError("Databricks SDK config does not expose a SQL credentials provider.")
-        return lambda: authenticate
-
-    def _workspace_client(self):
-        from databricks.sdk import WorkspaceClient
-
-        kwargs = {}
-        if self.settings.databricks_host:
-            kwargs["host"] = self.settings.databricks_host
-        if self.settings.databricks_token:
-            kwargs["token"] = self.settings.databricks_token
-        return WorkspaceClient(**kwargs)
-
-    def _compute_info(self) -> tuple[str, str]:
-        """Queries Databricks API and returns (cluster_or_warehouse_name, state)."""
-        client = self._workspace_client()
-        if self.settings.databricks_cluster_id:
-            cluster = client.clusters.get(self.settings.databricks_cluster_id)
-            state = getattr(cluster.state, "value", str(cluster.state)).upper()
-            name = getattr(cluster, "cluster_name", None) or getattr(cluster, "name", "")
-            return (str(name) if name else self._compute_name), state
-
-        if not self.settings.databricks_warehouse_id:
-            raise RuntimeError("DATABRICKS_WAREHOUSE_ID or DATABRICKS_CLUSTER_ID is required for Databricks SQL storage.")
-        warehouse = client.warehouses.get(self.settings.databricks_warehouse_id)
-        state = getattr(warehouse.state, "value", str(warehouse.state)).upper()
-        name = getattr(warehouse, "name", "")
-        return (str(name) if name else self._compute_name), state
-
-    def _warehouse_state(self) -> str:
-        _, state = self._compute_info()
-        return state
-
-    def _start_compute(self) -> None:
-        client = self._workspace_client()
-        if self.settings.databricks_cluster_id:
-            client.clusters.start(self.settings.databricks_cluster_id)
-        else:
-            client.warehouses.start(self.settings.databricks_warehouse_id)
+        return self.cluster_manager.get_cursor()
 
     def _ensure_table(self) -> None:
         with self._get_cursor() as cursor:
