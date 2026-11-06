@@ -1345,6 +1345,18 @@ body:not(.modal-open) .modal-backdrop {
   border: 2px solid rgba(255, 138, 138, 0.4);
 }
 
+.status-modal-icon-circle.cluster-offline {
+  background-color: rgba(244, 162, 97, 0.18);
+  color: #d97706;
+  border: 2px solid rgba(244, 162, 97, 0.45);
+}
+
+.status-modal-icon-circle.inactive {
+  background-color: rgba(100, 116, 139, 0.16);
+  color: #475569;
+  border: 2px solid rgba(100, 116, 139, 0.35);
+}
+
 .status-modal-title {
   font-size: 1.3rem;
   font-weight: 800;

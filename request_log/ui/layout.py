@@ -28,6 +28,29 @@ def create_app_ui(settings):
                     $('body').removeClass('modal-open').css({'overflow': '', 'padding-right': ''});
                 }, 50);
             });
+
+            (function() {
+                var lastPingTime = 0;
+                var THROTTLE_MS = 30000;
+
+                function pingActivity() {
+                    var now = Date.now();
+                    if (now - lastPingTime >= THROTTLE_MS) {
+                        lastPingTime = now;
+                        if (window.Shiny && window.Shiny.setInputValue) {
+                            Shiny.setInputValue('user_activity_ping', now, {priority: 'event'});
+                        }
+                    }
+                }
+
+                ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'wheel'].forEach(function(evt) {
+                    window.addEventListener(evt, pingActivity, { passive: true });
+                });
+
+                $(document).on('shiny:connected', function() {
+                    pingActivity();
+                });
+            })();
         """),
         ui.div(
             ui.tags.aside(

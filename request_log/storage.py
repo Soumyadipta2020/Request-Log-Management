@@ -31,13 +31,15 @@ COLUMNS = [
 DATE_COLUMNS = ["log_date", "expected_end_date"]
 DEFAULT_STATUSES = ["Pending", "In Progress", "Hold", "Completed", "Cancelled"]
 STARTING_STATES = {"PENDING", "RESTARTING", "RESIZING", "STARTING"}
+STOPPING_STATES = {"TERMINATING", "STOPPING", "DELETING"}
+OFFLINE_STATES = {"TERMINATED", "STOPPED", "OFFLINE"}
 RUNNING_STATE = "RUNNING"
 
 
 class ClusterStartingError(RuntimeError):
     def __init__(self, state: str):
         self.state = state
-        super().__init__(f"Databricks cluster is {state}; startup has been requested.")
+        super().__init__(f"Databricks cluster is {state}; please start the cluster to load data.")
 
 
 def empty_requests() -> pd.DataFrame:
@@ -111,7 +113,11 @@ class RequestStore:
     def cluster_health(self) -> dict[str, str]:
         if hasattr(self.backend, "cluster_health"):
             return self.backend.cluster_health()
-        return {"state": "LOCAL", "message": "Using local CSV storage.", "can_read": "true"}
+        return {"state": "LOCAL", "message": "Using local CSV storage.", "can_read": "true", "is_offline": "false"}
+
+    def start_cluster(self) -> None:
+        if hasattr(self.backend, "start_cluster"):
+            self.backend.start_cluster()
 
 
 class CsvStore:
@@ -158,7 +164,7 @@ class DatabricksSqlWarehouseStore:
         self._validate_identifier(settings.uc_table)
 
         self._status_lock = threading.Lock()
-        self._cluster_status = {"state": "UNKNOWN", "message": "Checking cluster health...", "can_read": "false"}
+        self._cluster_status = {"state": "UNKNOWN", "message": "Checking cluster health...", "can_read": "false", "is_offline": "false"}
         self._bg_thread_started = False
         self._bg_lock = threading.Lock()
 
@@ -200,28 +206,65 @@ class DatabricksSqlWarehouseStore:
         with self._status_lock:
             return dict(self._cluster_status)
 
+    def start_cluster(self) -> None:
+        self._start_compute()
+        with self._status_lock:
+            self._cluster_status = {
+                "state": "STARTING",
+                "message": "Compute startup has been initiated. Waiting for cluster to be ready...",
+                "can_read": "false",
+                "is_offline": "false",
+            }
+
     def _status_polling_loop(self) -> None:
         while True:
             try:
                 state = self._warehouse_state()
                 if state == RUNNING_STATE:
-                    new_status = {"state": state, "message": "Databricks SQL Warehouse is running.", "can_read": "true"}
-                elif state not in STARTING_STATES:
-                    try:
-                        self._start_compute()
-                        new_status = {
-                            "state": state,
-                            "message": f"Compute was {state}. Startup has been triggered.",
-                            "can_read": "false",
-                        }
-                    except Exception as exc:
-                        new_status = {"state": state, "message": f"Compute is {state}. Failed to trigger startup: {exc}", "can_read": "false"}
+                    new_status = {
+                        "state": state,
+                        "message": "Databricks compute is running.",
+                        "can_read": "true",
+                        "is_offline": "false",
+                    }
+                elif state in STARTING_STATES:
+                    new_status = {
+                        "state": state,
+                        "message": f"Databricks compute is {state.lower()}...",
+                        "can_read": "false",
+                        "is_offline": "false",
+                    }
+                elif state in STOPPING_STATES:
+                    new_status = {
+                        "state": state,
+                        "message": f"Databricks compute is {state.lower()}...",
+                        "can_read": "false",
+                        "is_offline": "false",
+                    }
+                elif state in OFFLINE_STATES:
+                    new_status = {
+                        "state": state,
+                        "message": f"Databricks compute is {state.lower()}.",
+                        "can_read": "false",
+                        "is_offline": "true",
+                    }
                 else:
-                    new_status = {"state": state, "message": "Compute is starting. Data will load when it reaches RUNNING.", "can_read": "false"}
+                    is_off = state not in {"ERROR", "UNKNOWN"}
+                    new_status = {
+                        "state": state,
+                        "message": f"Databricks compute status: {state}.",
+                        "can_read": "false",
+                        "is_offline": "true" if is_off else "false",
+                    }
             except Exception as exc:
                 import traceback
                 traceback.print_exc()
-                new_status = {"state": "ERROR", "message": f"{type(exc).__name__}: {str(exc)}", "can_read": "false"}
+                new_status = {
+                    "state": "ERROR",
+                    "message": f"{type(exc).__name__}: {str(exc)}",
+                    "can_read": "false",
+                    "is_offline": "false",
+                }
 
             with self._status_lock:
                 self._cluster_status = new_status

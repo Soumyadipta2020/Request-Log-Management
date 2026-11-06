@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 import asyncio
+import os
+import time
 
 import pandas as pd
 import plotly.express as px
@@ -25,7 +27,14 @@ from request_log.constants import (
 )
 from request_log.server.charts import empty_chart, get_integer_dtick, plot_template
 from request_log.storage import COLUMNS, ClusterStartingError, empty_requests, new_request
-from request_log.ui.components import metric_card, sidebar_link
+from request_log.ui.components import (
+    cluster_error_modal,
+    cluster_offline_modal,
+    cluster_starting_modal,
+    metric_card,
+    session_inactive_modal,
+    sidebar_link,
+)
 
 
 def create_server(settings, store):
@@ -35,10 +44,30 @@ def create_server(settings, store):
         data_loaded = reactive.value(False)
         data_error = reactive.value("")
         cluster_info = reactive.value(store.cluster_health())
+        last_user_activity = reactive.value(time.time())
+        is_app_inactive = reactive.value(False)
+        cluster_modal_state = reactive.value("none")
+        offline_modal_dismissed = reactive.value(False)
+        previous_cluster_state = reactive.value(None)
+
+        @reactive.effect
+        @reactive.event(input.user_activity_ping)
+        def on_user_activity_ping():
+            if not is_app_inactive():
+                last_user_activity.set(time.time())
 
         @reactive.effect
         @reactive.event(input.refresh)
         def refresh_data():
+            last_user_activity.set(time.time())
+            info = cluster_info()
+            state = info.get("state", "UNKNOWN")
+            is_offline = info.get("is_offline") == "true" or state in {"TERMINATED", "STOPPED", "OFFLINE"}
+            if is_offline and settings.storage_mode == "databricks":
+                offline_modal_dismissed.set(False)
+                target = settings.databricks_cluster_id or settings.databricks_warehouse_id
+                cluster_modal_state.set("offline_prompt")
+                ui.modal_show(cluster_offline_modal(target, state))
             refresh_count.set(refresh_count() + 1)
 
         @reactive.effect
@@ -48,21 +77,118 @@ def create_server(settings, store):
             else:
                 return
 
+            if is_app_inactive():
+                return
+
             try:
                 print("[DEBUG] Calling store.cluster_health()...", flush=True)
                 health = store.cluster_health()
                 print(f"[DEBUG] Health result: {health}", flush=True)
                 cluster_info.set(health)
+
+                state = health.get("state", "UNKNOWN")
+                is_offline = health.get("is_offline") == "true" or state in {"TERMINATED", "STOPPED", "OFFLINE"}
+
+                prev_state = previous_cluster_state()
+                if prev_state is not None and prev_state != state:
+                    if is_offline and prev_state not in {"TERMINATED", "STOPPED", "OFFLINE"}:
+                        offline_modal_dismissed.set(False)
+                previous_cluster_state.set(state)
+
+                # Check inactivity timeout (30 mins = 1800s default)
+                inactivity_timeout_seconds = int(os.environ.get("INACTIVITY_TIMEOUT_SECONDS", 30 * 60))
+                idle_seconds = time.time() - last_user_activity()
+
+                if is_offline and idle_seconds >= inactivity_timeout_seconds:
+                    is_app_inactive.set(True)
+                    cluster_modal_state.set("inactive")
+                    ui.modal_show(session_inactive_modal())
+                    return
+
                 if health.get("can_read") == "true":
+                    if cluster_modal_state() in ("starting", "offline_prompt"):
+                        cluster_modal_state.set("none")
+                        ui.modal_remove()
+                        ui.notification_show("Databricks cluster is running! Loading data...", type="message", duration=5)
                     with reactive.isolate():
                         has_loaded_data = data_loaded()
                     if not has_loaded_data:
                         refresh_count.set(refresh_count() + 1)
+                elif is_offline:
+                    if not offline_modal_dismissed() and cluster_modal_state() == "none":
+                        cluster_modal_state.set("offline_prompt")
+                        target = settings.databricks_cluster_id or settings.databricks_warehouse_id
+                        ui.modal_show(cluster_offline_modal(target, state))
             except Exception as exc:
                 import traceback
                 traceback.print_exc()
                 error_msg = f"{type(exc).__name__}: {str(exc)}"
-                cluster_info.set({"state": "ERROR", "message": error_msg, "can_read": "false"})
+                cluster_info.set({"state": "ERROR", "message": error_msg, "can_read": "false", "is_offline": "false"})
+
+        @reactive.effect
+        @reactive.event(input.btn_start_cluster_confirm)
+        async def on_start_cluster_confirmed():
+            last_user_activity.set(time.time())
+            target = settings.databricks_cluster_id or settings.databricks_warehouse_id
+            cluster_modal_state.set("starting")
+            ui.modal_show(cluster_starting_modal(target))
+            try:
+                await asyncio.to_thread(store.start_cluster)
+                cluster_info.set(store.cluster_health())
+            except Exception as exc:
+                import traceback
+                traceback.print_exc()
+                cluster_modal_state.set("error")
+                ui.modal_show(cluster_error_modal(str(exc)))
+
+        @reactive.effect
+        @reactive.event(input.btn_offline_modal_dismiss)
+        def on_offline_modal_dismissed():
+            last_user_activity.set(time.time())
+            offline_modal_dismissed.set(True)
+            cluster_modal_state.set("none")
+            ui.modal_remove()
+
+        @reactive.effect
+        @reactive.event(input.btn_dismiss_starting_modal)
+        def on_dismiss_starting_modal():
+            last_user_activity.set(time.time())
+            cluster_modal_state.set("none")
+            ui.modal_remove()
+
+        @reactive.effect
+        @reactive.event(input.btn_banner_start_cluster)
+        def on_banner_start_cluster():
+            last_user_activity.set(time.time())
+            offline_modal_dismissed.set(False)
+            target = settings.databricks_cluster_id or settings.databricks_warehouse_id
+            info = cluster_info()
+            state = info.get("state", "OFFLINE")
+            cluster_modal_state.set("offline_prompt")
+            ui.modal_show(cluster_offline_modal(target, state))
+
+        @reactive.effect
+        @reactive.event(input.btn_resume_session)
+        def on_resume_session():
+            is_app_inactive.set(False)
+            last_user_activity.set(time.time())
+            offline_modal_dismissed.set(False)
+            cluster_modal_state.set("none")
+            ui.modal_remove()
+            if settings.storage_mode == "databricks":
+                try:
+                    health = store.cluster_health()
+                    cluster_info.set(health)
+                    state = health.get("state", "UNKNOWN")
+                    is_offline = health.get("is_offline") == "true" or state in {"TERMINATED", "STOPPED", "OFFLINE"}
+                    if is_offline:
+                        target = settings.databricks_cluster_id or settings.databricks_warehouse_id
+                        cluster_modal_state.set("offline_prompt")
+                        ui.modal_show(cluster_offline_modal(target, state))
+                    elif health.get("can_read") == "true":
+                        refresh_count.set(refresh_count() + 1)
+                except Exception:
+                    pass
 
         @reactive.effect
         def load_requests():
@@ -231,9 +357,28 @@ def create_server(settings, store):
             if settings.storage_mode != "databricks" or state == "RUNNING":
                 return None
             banner_class = "ok" if info.get("can_read") == "true" else "warn"
+            is_offline = info.get("is_offline") == "true" or state in {"TERMINATED", "STOPPED", "OFFLINE"}
+            is_starting = state in {"PENDING", "RESTARTING", "RESIZING", "STARTING"}
+
+            action_btn = None
+            if is_offline:
+                action_btn = ui.input_action_button(
+                    "btn_banner_start_cluster",
+                    "Start Cluster",
+                    class_="btn-primary compact-btn",
+                    style="margin-left: auto;",
+                )
+            elif is_starting:
+                action_btn = ui.div(
+                    ui.tags.span(class_="spinner-border spinner-border-sm text-primary", role="status", style="width: 0.9rem; height: 0.9rem; margin-right: 6px;"),
+                    ui.tags.span("Starting..."),
+                    style="margin-left: auto; display: flex; align-items: center; font-size: 0.85rem; font-weight: 700; color: var(--bg-blue);",
+                )
+
             return ui.div(
                 ui.tags.span(f"Cluster {state}", class_="health-state"),
                 ui.tags.span(message),
+                action_btn,
                 class_=f"health-banner {banner_class}",
             )
 
