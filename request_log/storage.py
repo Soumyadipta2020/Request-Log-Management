@@ -185,12 +185,7 @@ class DatabricksSqlWarehouseStore:
             "can_read": "false",
             "is_offline": "false",
         }
-        self._bg_thread_started = False
-        self._bg_lock = threading.Lock()
-        self._is_paused = False
-        self._pause_lock = threading.Lock()
-        self._resume_event = threading.Event()
-        self._resume_event.set()
+        self._last_status_check = 0.0
         self._startup_in_progress = False
         self._startup_requested_at = 0.0
 
@@ -223,28 +218,24 @@ class DatabricksSqlWarehouseStore:
             set_clause = ", ".join(f"{column} = {self._sql_literal(value)}" for column, value in updates.items())
             cursor.execute(f"UPDATE {self._table_name()} SET {set_clause} WHERE request_id = {self._sql_literal(request_id)}")
 
-    def cluster_health(self) -> dict[str, str]:
-        with self._bg_lock:
-            if not self._bg_thread_started:
-                self._bg_thread_started = True
-                threading.Thread(target=self._status_polling_loop, daemon=True).start()
-
+    def cluster_health(self, force_refresh: bool = False) -> dict[str, str]:
+        now = time.time()
         with self._status_lock:
-            return dict(self._cluster_status)
+            cached = dict(self._cluster_status)
+            last_check = getattr(self, "_last_status_check", 0.0)
+            state = cached.get("state", "UNKNOWN")
+
+        # Rate limit checks to once every 6 seconds to prevent duplicate queries:
+        if not force_refresh and state != "UNKNOWN" and (now - last_check) < 6.0:
+            return cached
+
+        return self.check_health_now()
 
     def pause_polling(self, reason: str = "app is idle") -> None:
-        with self._pause_lock:
-            if not self._is_paused:
-                self._is_paused = True
-                self._resume_event.clear()
-                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [CLUSTER POLLING] Background health check paused ({reason}).", flush=True)
+        pass
 
     def resume_polling(self) -> None:
-        with self._pause_lock:
-            if self._is_paused:
-                self._is_paused = False
-                self._resume_event.set()
-                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [CLUSTER POLLING] Background health check resumed.", flush=True)
+        pass
 
     def _status_dict(self, name: str, state: str) -> dict[str, str]:
         display_label = name or "Databricks compute"
@@ -311,8 +302,7 @@ class DatabricksSqlWarehouseStore:
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [CLUSTER STATUS] '{display_label}' State: {state} | {new_status['message']}", flush=True)
             with self._status_lock:
                 self._cluster_status = new_status
-            if state in OFFLINE_STATES and not self._startup_in_progress:
-                self.pause_polling("cluster is offline")
+                self._last_status_check = time.time()
             return dict(new_status)
         except Exception as exc:
             new_status = {
@@ -324,12 +314,12 @@ class DatabricksSqlWarehouseStore:
             }
             with self._status_lock:
                 self._cluster_status = new_status
+                self._last_status_check = time.time()
             return dict(new_status)
 
     def start_cluster(self) -> None:
         self._startup_in_progress = True
         self._startup_requested_at = time.time()
-        self.resume_polling()
         target_name = self._compute_name or "compute"
         target_id = self.settings.databricks_cluster_id or self.settings.databricks_warehouse_id or "compute"
         print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [CLUSTER ACTION] Starting Databricks compute: '{target_name}' ({target_id})...", flush=True)
@@ -342,54 +332,7 @@ class DatabricksSqlWarehouseStore:
                 "can_read": "false",
                 "is_offline": "false",
             }
-
-    def _status_polling_loop(self) -> None:
-        while True:
-            self._resume_event.wait()
-            try:
-                name, state = self._compute_info()
-                if name:
-                    self._compute_name = name
-                display_label = name or "Databricks compute"
-
-                # Check if startup is in progress:
-                elapsed_since_start = time.time() - self._startup_requested_at
-                if self._startup_in_progress:
-                    if state == RUNNING_STATE:
-                        self._startup_in_progress = False
-                    elif state in OFFLINE_STATES and elapsed_since_start < 45:
-                        # Databricks takes 5-20s after API call to update state from STOPPED to STARTING.
-                        # Preserve STARTING state during this transition window!
-                        state = "STARTING"
-                    elif elapsed_since_start >= 300:
-                        self._startup_in_progress = False
-
-                new_status = self._status_dict(name, state)
-                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [CLUSTER STATUS] '{display_label}' State: {state} | {new_status['message']}", flush=True)
-            except Exception as exc:
-                import traceback
-                traceback.print_exc()
-                new_status = {
-                    "state": "ERROR",
-                    "cluster_name": self._compute_name,
-                    "message": f"{type(exc).__name__}: {str(exc)}",
-                    "can_read": "false",
-                    "is_offline": "false",
-                }
-                print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [CLUSTER ERROR] {type(exc).__name__}: {str(exc)}", flush=True)
-
-            with self._status_lock:
-                self._cluster_status = new_status
-
-            if new_status.get("state") in OFFLINE_STATES and not self._startup_in_progress:
-                self.pause_polling("cluster is offline")
-                continue
-
-            sleep_duration = 5 if self._startup_in_progress or new_status.get("state") in STARTING_STATES else 30
-            for _ in range(int(sleep_duration / 0.5)):
-                if not self._resume_event.is_set():
-                    break
-                time.sleep(0.5)
+            self._last_status_check = time.time()
 
     def _get_cursor(self):
         with self._status_lock:
