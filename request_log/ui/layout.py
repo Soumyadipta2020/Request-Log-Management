@@ -30,7 +30,7 @@ def create_app_ui(settings):
             });
 
             (function() {
-                var lastPingTime = 0;
+                var lastPingTime = Date.now();
                 var THROTTLE_MS = 30000;
 
                 function pingActivity() {
@@ -38,17 +38,13 @@ def create_app_ui(settings):
                     if (now - lastPingTime >= THROTTLE_MS) {
                         lastPingTime = now;
                         if (window.Shiny && window.Shiny.setInputValue) {
-                            Shiny.setInputValue('user_activity_ping', now, {priority: 'event'});
+                            Shiny.setInputValue('user_activity_ping', now);
                         }
                     }
                 }
 
                 ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'wheel'].forEach(function(evt) {
                     window.addEventListener(evt, pingActivity, { passive: true });
-                });
-
-                $(document).on('shiny:connected', function() {
-                    pingActivity();
                 });
             })();
         """),

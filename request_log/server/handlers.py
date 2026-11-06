@@ -44,60 +44,75 @@ def create_server(settings, store):
         data_loaded = reactive.value(False)
         data_error = reactive.value("")
         cluster_info = reactive.value(store.cluster_health())
-        last_user_activity = reactive.value(time.time())
+        last_user_activity = time.time()
+        previous_cluster_state = None
         is_app_inactive = reactive.value(False)
         cluster_modal_state = reactive.value("none")
         offline_modal_dismissed = reactive.value(False)
-        previous_cluster_state = reactive.value(None)
 
         @reactive.effect
-        @reactive.event(input.user_activity_ping)
+        @reactive.event(input.user_activity_ping, ignore_none=True, ignore_init=True)
         def on_user_activity_ping():
-            if not is_app_inactive():
-                last_user_activity.set(time.time())
+            nonlocal last_user_activity
+            with reactive.isolate():
+                inactive = is_app_inactive()
+            if not inactive:
+                last_user_activity = time.time()
 
         @reactive.effect
         @reactive.event(input.refresh)
         def refresh_data():
-            last_user_activity.set(time.time())
-            info = cluster_info()
-            state = info.get("state", "UNKNOWN")
-            is_offline = info.get("is_offline") == "true" or state in {"TERMINATED", "STOPPED", "OFFLINE"}
-            if is_offline and settings.storage_mode == "databricks":
-                offline_modal_dismissed.set(False)
-                target = settings.databricks_cluster_id or settings.databricks_warehouse_id
-                cluster_modal_state.set("offline_prompt")
-                ui.modal_show(cluster_offline_modal(target, state))
+            nonlocal last_user_activity
+            last_user_activity = time.time()
+            if settings.storage_mode == "databricks":
+                with reactive.isolate():
+                    info = cluster_info()
+                state = info.get("state", "UNKNOWN")
+                is_offline = info.get("is_offline") == "true" or state in {"TERMINATED", "STOPPED", "OFFLINE"}
+                if is_offline:
+                    offline_modal_dismissed.set(False)
+                    target = settings.databricks_cluster_id or settings.databricks_warehouse_id
+                    cluster_modal_state.set("offline_prompt")
+                    ui.modal_show(cluster_offline_modal(target, state))
             refresh_count.set(refresh_count() + 1)
 
         @reactive.effect
         def poll_cluster_health():
-            if settings.storage_mode == "databricks":
-                reactive.invalidate_later(15, session=session)
-            else:
+            if settings.storage_mode != "databricks":
                 return
 
-            if is_app_inactive():
-                return
+            with reactive.isolate():
+                if is_app_inactive():
+                    reactive.invalidate_later(15, session=session)
+                    return
 
             try:
-                print("[DEBUG] Calling store.cluster_health()...", flush=True)
                 health = store.cluster_health()
-                print(f"[DEBUG] Health result: {health}", flush=True)
                 cluster_info.set(health)
 
                 state = health.get("state", "UNKNOWN")
                 is_offline = health.get("is_offline") == "true" or state in {"TERMINATED", "STOPPED", "OFFLINE"}
 
-                prev_state = previous_cluster_state()
+                if state == "UNKNOWN":
+                    reactive.invalidate_later(1, session=session)
+                    return
+                else:
+                    reactive.invalidate_later(15, session=session)
+
+                nonlocal previous_cluster_state
+                prev_state = previous_cluster_state
                 if prev_state is not None and prev_state != state:
                     if is_offline and prev_state not in {"TERMINATED", "STOPPED", "OFFLINE"}:
                         offline_modal_dismissed.set(False)
-                previous_cluster_state.set(state)
+                previous_cluster_state = state
 
-                # Check inactivity timeout (30 mins = 1800s default)
                 inactivity_timeout_seconds = int(os.environ.get("INACTIVITY_TIMEOUT_SECONDS", 30 * 60))
-                idle_seconds = time.time() - last_user_activity()
+                idle_seconds = time.time() - last_user_activity
+
+                with reactive.isolate():
+                    modal_state = cluster_modal_state()
+                    dismissed = offline_modal_dismissed()
+                    has_loaded_data = data_loaded()
 
                 if is_offline and idle_seconds >= inactivity_timeout_seconds:
                     is_app_inactive.set(True)
@@ -106,16 +121,14 @@ def create_server(settings, store):
                     return
 
                 if health.get("can_read") == "true":
-                    if cluster_modal_state() in ("starting", "offline_prompt"):
+                    if modal_state in ("starting", "offline_prompt"):
                         cluster_modal_state.set("none")
                         ui.modal_remove()
                         ui.notification_show("Databricks cluster is running! Loading data...", type="message", duration=5)
-                    with reactive.isolate():
-                        has_loaded_data = data_loaded()
                     if not has_loaded_data:
                         refresh_count.set(refresh_count() + 1)
                 elif is_offline:
-                    if not offline_modal_dismissed() and cluster_modal_state() == "none":
+                    if not dismissed and modal_state == "none":
                         cluster_modal_state.set("offline_prompt")
                         target = settings.databricks_cluster_id or settings.databricks_warehouse_id
                         ui.modal_show(cluster_offline_modal(target, state))
@@ -124,11 +137,13 @@ def create_server(settings, store):
                 traceback.print_exc()
                 error_msg = f"{type(exc).__name__}: {str(exc)}"
                 cluster_info.set({"state": "ERROR", "message": error_msg, "can_read": "false", "is_offline": "false"})
+                reactive.invalidate_later(15, session=session)
 
         @reactive.effect
         @reactive.event(input.btn_start_cluster_confirm)
         async def on_start_cluster_confirmed():
-            last_user_activity.set(time.time())
+            nonlocal last_user_activity
+            last_user_activity = time.time()
             target = settings.databricks_cluster_id or settings.databricks_warehouse_id
             cluster_modal_state.set("starting")
             ui.modal_show(cluster_starting_modal(target))
@@ -144,7 +159,8 @@ def create_server(settings, store):
         @reactive.effect
         @reactive.event(input.btn_offline_modal_dismiss)
         def on_offline_modal_dismissed():
-            last_user_activity.set(time.time())
+            nonlocal last_user_activity
+            last_user_activity = time.time()
             offline_modal_dismissed.set(True)
             cluster_modal_state.set("none")
             ui.modal_remove()
@@ -152,17 +168,20 @@ def create_server(settings, store):
         @reactive.effect
         @reactive.event(input.btn_dismiss_starting_modal)
         def on_dismiss_starting_modal():
-            last_user_activity.set(time.time())
+            nonlocal last_user_activity
+            last_user_activity = time.time()
             cluster_modal_state.set("none")
             ui.modal_remove()
 
         @reactive.effect
         @reactive.event(input.btn_banner_start_cluster)
         def on_banner_start_cluster():
-            last_user_activity.set(time.time())
+            nonlocal last_user_activity
+            last_user_activity = time.time()
             offline_modal_dismissed.set(False)
             target = settings.databricks_cluster_id or settings.databricks_warehouse_id
-            info = cluster_info()
+            with reactive.isolate():
+                info = cluster_info()
             state = info.get("state", "OFFLINE")
             cluster_modal_state.set("offline_prompt")
             ui.modal_show(cluster_offline_modal(target, state))
@@ -170,8 +189,9 @@ def create_server(settings, store):
         @reactive.effect
         @reactive.event(input.btn_resume_session)
         def on_resume_session():
+            nonlocal last_user_activity
             is_app_inactive.set(False)
-            last_user_activity.set(time.time())
+            last_user_activity = time.time()
             offline_modal_dismissed.set(False)
             cluster_modal_state.set("none")
             ui.modal_remove()
